@@ -1,0 +1,30 @@
+#!python
+# (C) Copyright 2018-2021 Intel Corporation.
+#
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+"""Build swim src"""
+
+SRC = ['swim.c']
+
+def scons():
+    """Scons function"""
+
+    Import('env')
+
+    env.AppendUnique(LIBPATH=[Dir('.')])
+
+    denv = env.Clone()
+
+    denv.AppendUnique(CPPPATH=['#/src/cart/swim'])
+    denv.AppendUnique(LIBS=['gurt'])
+    denv.Append(CCFLAGS=['-D_USE_CART_'])
+
+    swim_targets = denv.SharedObject(SRC)
+    swim_lib = denv.SharedLibrary('libswim', swim_targets)
+
+    Default(swim_targets)
+    Export('swim_lib', 'swim_targets')
+
+if __name__ == "SCons.Script":
+    scons()

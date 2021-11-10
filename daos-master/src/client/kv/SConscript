@@ -1,0 +1,16 @@
+"""Build DAOS Addons"""
+
+def scons():
+    """Execute build"""
+    Import('env')
+
+    denv = env.Clone()
+
+    denv.AppendUnique(LIBPATH=[Dir('.')])
+
+    dc_kv_tgts = denv.SharedObject(['dc_kv.c'])
+
+    Export('dc_kv_tgts')
+
+if __name__ == "SCons.Script":
+    scons()

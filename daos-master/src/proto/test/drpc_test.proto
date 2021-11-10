@@ -1,0 +1,36 @@
+//
+// (C) Copyright 2018-2021 Intel Corporation.
+//
+// SPDX-License-Identifier: BSD-2-Clause-Patent
+//
+syntax = "proto3";
+package hello;
+
+option go_package = "github.com/daos-stack/daos/src/control/cmd/drpc_test/hello";
+
+enum Module
+{
+	HELLO = 0;
+}
+
+enum Function
+{
+	GREETING = 0;
+}
+/**
+ * Hello is the message to request a greeting from the server
+ *
+ * name is the name of the user being greeted
+ */
+message Hello {
+	string name = 1;
+}
+
+/**
+ * HeloResponse is the greeting returned from the server.
+ *
+ * greeting is greeting message for the user.
+ */
+message HelloResponse {
+	string greeting = 1;
+}

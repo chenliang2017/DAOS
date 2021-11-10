@@ -1,0 +1,113 @@
+"""Build common libraries"""
+import daos_build
+
+COMMON_FILES = ['debug.c', 'mem.c', 'fail_loc.c', 'lru.c',
+                'misc.c', 'pool_map.c', 'sort.c', 'btree.c', 'prop.c',
+                'btree_class.c', 'tse.c', 'rsvc.c', 'checksum.c',
+                'drpc.c', 'drpc.pb-c.c', 'proc.c',
+                'acl_api.c', 'acl_util.c', 'acl_principal.c', 'cont_props.c',
+                'dedup.c', 'profile.c', 'compression.c', 'compression_isal.c',
+                'compression_qat.c', 'multihash.c', 'multihash_isal.c',
+                'cipher.c', 'cipher_isal.c', 'qat.c', 'fault_domain.c']
+
+
+def build_daos_common(env, client, prereqs):
+    """ Building non-pmem version for client's common lib"""
+    denv = env.Clone()
+
+    common_libs = ['isal', 'isal_crypto', 'cart', 'gurt', 'lz4', 'protobuf-c', 'uuid', 'pthread']
+    if client:
+        libname = 'libdaos_common'
+    else:
+        common_libs.extend(['pmemobj'])
+        denv.Append(CPPDEFINES=['-DDAOS_PMEM_BUILD'])
+        denv.Append(OBJPREFIX="v_")
+        libname = 'libdaos_common_pmem'
+        prereqs.require(denv, 'pmdk')
+
+    common = daos_build.library(denv, libname, COMMON_FILES, LIBS=common_libs)
+    denv.Install('$PREFIX/lib64/', common)
+
+def build_dts_library(env):
+    """Build libdts library"""
+    Import('prereqs')
+
+    denv = env.Clone()
+
+    prereqs.require(denv, 'argobots', 'protobufc')
+
+    if not GetOption('help') and not GetOption('clean'):
+        mpi = daos_build.configure_mpi(denv, [])
+        if mpi is None:
+            print("\nSkipping compilation for tests that need MPI")
+            print("Install and load mpich or openmpi\n")
+            return
+
+    libraries = ['cmocka', 'daos', 'daos_tests']
+
+    # Add runtime paths for daos libraries
+    denv.AppendUnique(LIBPATH=["../client/api"])
+    denv.AppendUnique(CPPPATH=["../tests/suite"])
+    denv.AppendUnique(CPPPATH=["../mgmt"])
+
+    denv.Replace(SHOBJPREFIX='mpi_')
+    mpi_cmd_parser = denv.SharedObject(['cmd_parser.c'])
+    Export('mpi_cmd_parser')
+
+    dts_lib = daos_build.library(denv, 'libdts', ['credit.c', 'dts.c'],
+                                 LIBS=libraries)
+    denv.Install('$PREFIX/lib64/', dts_lib)
+
+def scons():
+    """Execute build"""
+    Import('env', 'base_env', 'prereqs')
+
+    env.AppendUnique(LIBPATH=[Dir('.')])
+    base_env.AppendUnique(LIBPATH=[Dir('.')])
+    daos_build.add_build_rpath(base_env)
+    daos_build.add_build_rpath(env)
+
+    # Hack alert, the argobots headers are required but the shared
+    # library isn't so add the dependency so the include path
+    # is correct, but set _libs to [] so that the library isn't
+    # linked in.
+
+    # Arm can build ISA-L
+    prereqs.require(env, 'isal')
+    prereqs.require(env, 'isal_crypto')
+
+    denv = env.Clone(LIBS=[])
+    prereqs.require(denv, 'isal', 'isal_crypto', 'protobufc')
+    denv.AppendUnique(LIBS=['cart', 'gurt', 'lz4'])
+    build_daos_common(denv, True, prereqs)
+
+    control_tgts = [File('control.c')]
+    Export('control_tgts')
+
+    cmd_parser = denv.SharedObject(['cmd_parser.c'])
+    Export('cmd_parser')
+    dc_credit = denv.SharedObject(['credit.c'])
+    Export('dc_credit')
+
+    if prereqs.server_requested():
+        build_daos_common(denv, False, prereqs)
+
+    if not prereqs.test_requested():
+        return
+    tlib_env = denv.Clone()
+    tlib_env.AppendUnique(LIBS=['json-c'])
+
+    prereqs.require(tlib_env, 'argobots')
+
+    tests_lib_src = ['tests_lib.c', 'tests_dmg_helpers.c']
+    tests_lib = daos_build.library(tlib_env, 'libdaos_tests', tests_lib_src)
+    tlib_env.Install('$PREFIX/lib64/', tests_lib)
+
+    tenv = tlib_env.Clone()
+    prereqs.require(tenv, 'pmdk')
+    SConscript('tests/SConscript', exports='tenv')
+
+    build_dts_library(base_env)
+
+if __name__ == "SCons.Script":
+    scons()

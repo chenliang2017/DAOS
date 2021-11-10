@@ -1,0 +1,12 @@
+hosts:
+  test_servers:
+    - server-A
+    - server-B
+timeout: 60
+server_config:
+  name: daos_server
+pool:
+  mode: 511
+  name: daos_server
+  scm_size: 1073741824
+  control_method: dmg

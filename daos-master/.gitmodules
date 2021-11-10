@@ -1,0 +1,3 @@
+[submodule "raft"]
+	path = src/rdb/raft
+	url = https://github.com/daos-stack/raft.git

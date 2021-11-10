@@ -1,0 +1,17 @@
+"""Build Per-server Metadata"""
+def scons():
+    """Execute build"""
+    Import('env', 'prereqs')
+
+    denv = env.Clone()
+    denv.Append(CPPDEFINES=['-DDAOS_PMEM_BUILD'])
+    prereqs.require(denv, 'pmdk', 'argobots', 'protobufc')
+
+    denv.Library('smd', Glob('*.c'),
+                 LIBS=[])
+
+    if prereqs.test_requested():
+        SConscript('tests/SConscript', exports='denv')
+
+if __name__ == "SCons.Script":
+    scons()

@@ -1,0 +1,37 @@
+//
+// (C) Copyright 2019-2021 Intel Corporation.
+//
+// SPDX-License-Identifier: BSD-2-Clause-Patent
+//
+
+syntax = "proto3";
+package ctl;
+
+option go_package = "github.com/daos-stack/daos/src/control/common/proto/ctl";
+
+import "ctl/storage_nvme.proto";
+import "ctl/storage_scm.proto";
+
+// Management Service Protobuf Definitions related to interactions between
+// DAOS control server and locally attached storage.
+
+message StorageScanReq {
+	ScanNvmeReq nvme = 1;
+	ScanScmReq scm = 2;
+}
+
+message StorageScanResp {
+	ScanNvmeResp nvme = 1;
+	ScanScmResp scm = 2;
+}
+
+message StorageFormatReq {
+	FormatNvmeReq nvme = 1;
+	FormatScmReq scm = 2;
+	bool reformat = 3;
+}
+
+message StorageFormatResp {
+	repeated NvmeControllerResult crets = 1;	// One per controller format attempt
+	repeated ScmMountResult mrets = 2;		// One per scm format and mount attempt
+}

@@ -1,0 +1,32 @@
+# Note that stuff that is commented out represents tests that presently
+# fail and will be uncommented as the daos code is fixed
+server_config:
+   name: daos_server
+hosts:
+  test_servers:
+    - server-A
+timeout: 150
+pool:
+  control_method: dmg
+  mode: 511
+  scm_size: 1073741824
+  name: daos_server
+querytests:
+   handles: !mux
+     goodhandle:
+          handle:
+             - VALID
+             - PASS
+     badhandle:
+          handle:
+             - 0
+             - FAIL
+   infoptr: !mux
+     goodptr:
+          info:
+             - VALID
+             - PASS
+     badptr:
+          info:
+             - NULL
+             - PASS

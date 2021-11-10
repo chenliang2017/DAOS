@@ -1,0 +1,33 @@
+hosts:
+  test_servers:
+    - server-A
+    - server-B
+    - server-C
+    - server-D
+    - server-E
+  test_clients:
+    - client-F
+timeout: 240
+server_config:
+  name: daos_server
+  servers: !mux
+    1_target:
+      targets: 1
+    2_targets:
+      targets: 2
+pool:
+  mode: 511
+  name: daos_server
+  scm_size: 1073741824
+  svcn: 2
+  control_method: dmg
+  pool_query_timeout: 30
+container:
+  object_qty: 10
+  record_qty: 10
+  akey_size: 5
+  dkey_size: 5
+  data_size: 5
+rebuild:
+  object_class: OC_RP_3G1
+  rank: 3

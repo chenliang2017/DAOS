@@ -1,0 +1,38 @@
+"""Build ftest"""
+import os
+
+def scons():
+    """Execute build"""
+    Import('env')
+
+    ftest_install_dir = '$PREFIX/lib/daos/TESTING/ftest'
+
+    env.Install(ftest_install_dir, Glob('*.*'))
+
+    dirs = ['aggregation', 'fault_injection', 'checksum',
+            'container', 'control', 'dfuse', 'dtx',
+            'daos_perf', 'daos_racer', 'daos_vol',
+            'daos_test', 'data', 'fault_domain', 'io', 'ior',
+            'mdtest', 'network', 'nvme', 'mpiio',
+            'object', 'osa', 'pool', 'rebuild', 'security',
+            'server', 'soak', 'unittest', 'erasurecode',
+            'datamover', 'scripts', 'dbench', 'harness',
+            'telemetry']
+
+    for sub_dir in dirs:
+        env.Install(os.path.join(ftest_install_dir, sub_dir),
+                    Glob("%s/*.*" % sub_dir))
+
+    # Glob doesn't recurse, and CaRT test dir nests deeper than the others
+    env.Install(os.path.join(ftest_install_dir, 'cart'),
+                Glob("%s/*/*.*" % 'cart'))
+
+    # Builders
+    SConscript('cart/SConscript')
+    Default('cart')
+
+    # util
+    SConscript('util/SConscript')
+
+if __name__ == "SCons.Script":
+    scons()

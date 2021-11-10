@@ -1,0 +1,26 @@
+"""Build drpc test"""
+
+import daos_build
+
+def scons():
+    """Execute build"""
+    Import('env', 'prereqs')
+
+    libs = ['$LIBS', 'daos_common', 'gurt']
+    sources = ['drpc_test.c', 'drpc_test.pb-c.c']
+
+    denv = env.Clone()
+    denv.AppendUnique(CFLAGS=['-std=gnu99'])
+    denv.AppendUnique(CPPDEFINES=['TEST'])
+
+    prereqs.require(denv, 'protobufc')
+
+    drpc_test = daos_build.program(denv, 'drpc_test', sources, LIBS=libs)
+    env.Install('$PREFIX/bin/', drpc_test)
+
+    drpc_engine_test = daos_build.program(denv, 'drpc_engine_test',
+                                          ['drpc_engine_test.c'], LIBS=libs)
+    env.Install('$PREFIX/bin/', drpc_engine_test)
+
+if __name__ == "SCons.Script":
+    scons()
