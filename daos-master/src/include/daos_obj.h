@@ -191,7 +191,7 @@ typedef enum {
  */
 typedef struct {
 	/** akey for this iod */
-	daos_key_t		iod_name;
+	daos_key_t		iod_name;	// akey
 	/*
 	 * Type of the value in an iod can be either a single type that is
 	 * always overwritten when updated, or it can be an array of EQUAL sized

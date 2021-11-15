@@ -1010,21 +1010,21 @@ dtx_leader_begin(daos_handle_t coh, struct dtx_id *dti,
 		 struct daos_shard_tgt *tgts, int tgt_cnt, uint32_t flags,
 		 struct dtx_memberships *mbs, struct dtx_leader_handle **p_dlh)
 {
-	struct dtx_leader_handle	*dlh;
+	struct dtx_leader_handle	*dlh;  // 主管理事务的句柄
 	struct dtx_handle		*dth;
 	int				 rc;
 	int				 i;
 
-	D_ALLOC(dlh, sizeof(*dlh) + sizeof(struct dtx_sub_status) * tgt_cnt);
+	D_ALLOC(dlh, sizeof(*dlh) + sizeof(struct dtx_sub_status) * tgt_cnt);  // 申请空间: 主+所有从
 	if (dlh == NULL)
 		return -DER_NOMEM;
 
 	if (tgt_cnt > 0) {
 		dlh->dlh_future = ABT_FUTURE_NULL;
-		dlh->dlh_subs = (struct dtx_sub_status *)(dlh + 1);
+		dlh->dlh_subs = (struct dtx_sub_status *)(dlh + 1);  // 上面申请了一坨空间, dtx_leader_handle结构体之后的空间都是sub用
 		for (i = 0; i < tgt_cnt; i++)
 			dlh->dlh_subs[i].dss_tgt = tgts[i];
-		dlh->dlh_sub_cnt = tgt_cnt;
+		dlh->dlh_sub_cnt = tgt_cnt;  // 从的数量
 	}
 
 	dth = &dlh->dlh_handle;
@@ -1102,7 +1102,9 @@ dtx_leader_end(struct dtx_leader_handle *dlh, struct ds_cont_child *cont,
 	 */
 
 	if (dlh->dlh_sub_cnt != 0)
-		rc = dtx_leader_wait(dlh);
+		rc = dtx_leader_wait(dlh); // 等所有的副本都回复消息(所有的副本上都执行成功)
+
+    // 所有的副本此时都执行成功
 
 	if (daos_is_zero_dti(&dth->dth_xid))
 		D_GOTO(out, result = result < 0 ? result : rc);
@@ -1697,7 +1699,7 @@ dtx_sub_comp_cb(struct dtx_leader_handle *dlh, int idx, int rc)
 
 struct dtx_ult_arg {
 	dtx_sub_func_t			func;
-	void				*func_arg;
+	void					*func_arg;
 	struct dtx_leader_handle	*dlh;
 };
 
@@ -1711,7 +1713,7 @@ dtx_leader_exec_ops_ult(void *arg)
 	int			  rc = 0;
 
 	D_ASSERT(future != ABT_FUTURE_NULL);
-	for (i = 0; i < dlh->dlh_sub_cnt; i++) {
+	for (i = 0; i < dlh->dlh_sub_cnt; i++) {  // 所有副本分片
 		struct dtx_sub_status *sub = &dlh->dlh_subs[i];
 
 		sub->dss_result = 0;
@@ -1727,9 +1729,9 @@ dtx_leader_exec_ops_ult(void *arg)
 			continue;
 		}
 
-		rc = ult_arg->func(dlh, ult_arg->func_arg, i, dtx_sub_comp_cb);
-		if (rc) {
-			sub->dss_result = rc;
+		rc = ult_arg->func(dlh, ult_arg->func_arg, i, dtx_sub_comp_cb);  // 执行: obj_tgt_update
+		if (rc) {                   // dtx_sub_comp_cb 为回调函数, 当从应答reply后会触发到该回调函数, 内部通过ABT_future_set将关联
+			sub->dss_result = rc;   // 的dlh_sub_cnt减1, 代表一个客户端应答回来了
 			break;
 		}
 	}
@@ -1748,11 +1750,11 @@ dtx_leader_exec_ops_ult(void *arg)
 }
 
 /**
- * Execute the operations on all targets.
+ * Execute the operations on all targets.  主从上执行Op
  */
 int
-dtx_leader_exec_ops(struct dtx_leader_handle *dlh, dtx_sub_func_t func,
-		    dtx_agg_cb_t agg_cb, void *agg_cb_arg, void *func_arg)
+dtx_leader_exec_ops(struct dtx_leader_handle *dlh, dtx_sub_func_t func/*obj_tgt_update*/,
+		    dtx_agg_cb_t agg_cb/*NULL*/, void *agg_cb_arg/*NULL*/, void *func_arg)
 {
 	struct dtx_ult_arg	*ult_arg;
 	int			rc;
@@ -1763,16 +1765,16 @@ dtx_leader_exec_ops(struct dtx_leader_handle *dlh, dtx_sub_func_t func,
 	D_ALLOC_PTR(ult_arg);
 	if (ult_arg == NULL)
 		return -DER_NOMEM;
-	ult_arg->func	= func;
+	ult_arg->func	= func;  // obj_tgt_update
 	ult_arg->func_arg = func_arg;
-	ult_arg->dlh	= dlh;
+	ult_arg->dlh	= dlh;   // 事务句柄
 	dlh->dlh_agg_cb = agg_cb;
 	dlh->dlh_agg_cb_arg = agg_cb_arg;
 
 	/* the future should already be freed */
 	D_ASSERT(dlh->dlh_future == ABT_FUTURE_NULL);
-	rc = ABT_future_create(dlh->dlh_sub_cnt, dtx_comp_cb, &dlh->dlh_future);
-	if (rc != ABT_SUCCESS) {
+	rc = ABT_future_create(dlh->dlh_sub_cnt, dtx_comp_cb, &dlh->dlh_future);  // 将dlh_sub_cnt于dlh_future关联, 类似于条件变量的东西
+	if (rc != ABT_SUCCESS) {							// ABT_future_set 每触发一次, dlh_sub_cnt的值就减1
 		D_ERROR("ABT_future_create failed %d.\n", rc);
 		D_FREE_PTR(ult_arg);
 		return dss_abterr2der(rc);
@@ -1786,7 +1788,7 @@ dtx_leader_exec_ops(struct dtx_leader_handle *dlh, dtx_sub_func_t func,
 	dlh->dlh_result = 0;
 	rc = dss_ult_create(dtx_leader_exec_ops_ult, ult_arg, DSS_XS_IOFW,
 			    dss_get_module_info()->dmi_tgt_id,
-			    DSS_DEEP_STACK_SZ, NULL);
+			    DSS_DEEP_STACK_SZ, NULL);  // 在协程上下文中执行副本分片的动作
 	if (rc != 0) {
 		D_ERROR("ult create failed "DF_RC"\n", DP_RC(rc));
 		D_FREE(ult_arg);
@@ -1796,7 +1798,7 @@ dtx_leader_exec_ops(struct dtx_leader_handle *dlh, dtx_sub_func_t func,
 
 exec:
 	/* Then execute the local operation */
-	rc = func(dlh, func_arg, -1, NULL);
+	rc = func(dlh, func_arg, -1, NULL);  // 主上执行: obj_tgt_update
 out:
 	return rc;
 }

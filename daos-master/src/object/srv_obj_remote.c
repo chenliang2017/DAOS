@@ -37,7 +37,7 @@ struct obj_remote_cb_arg {
 };
 
 static void
-shard_update_req_cb(const struct crt_cb_info *cb_info)
+shard_update_req_cb(const struct crt_cb_info *cb_info)  // 从分片回复reply触发这个回调函数执行
 {
 	crt_rpc_t			*req = cb_info->cci_rpc;
 	struct obj_remote_cb_arg	*arg = cb_info->cci_arg;
@@ -61,7 +61,7 @@ shard_update_req_cb(const struct crt_cb_info *cb_info)
 		rc = rc1;
 
 	if (arg->comp_cb)
-		arg->comp_cb(dlh, arg->idx, rc);
+		arg->comp_cb(dlh, arg->idx, rc);  // 执行上册回调, 将主等待从的数目进行处理, 同时将主从ABT_future_wait中唤醒
 
 	crt_req_decref(parent_req);
 	D_FREE(arg);
@@ -144,7 +144,7 @@ ds_obj_remote_update(struct dtx_leader_handle *dlh, void *data, int idx,
 
 	D_DEBUG(DB_TRACE, DF_UOID" forwarding to rank:%d tag:%d.\n",
 		DP_UOID(orw->orw_oid), tgt_ep.ep_rank, tgt_ep.ep_tag);
-	rc = crt_req_send(req, shard_update_req_cb, remote_arg);
+	rc = crt_req_send(req, shard_update_req_cb, remote_arg);  // 发给从分片
 	if (rc != 0)
 		D_ERROR("crt_req_send failed, rc "DF_RC"\n", DP_RC(rc));
 	return rc;

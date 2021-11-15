@@ -67,7 +67,7 @@ typedef struct {
 	size_t		iov_buf_len;	// 指针指向内存块的长度
 	/** data length */
 	size_t		iov_len;		// 数据的长度
-} d_iov_t;
+} d_iov_t;		// 存一块内存数据的结构体
 
 /** Server identification */
 typedef uint32_t	d_rank_t;
@@ -89,7 +89,7 @@ typedef struct {
 	uint32_t	sg_nr;		// 数组的大小
 	uint32_t	sg_nr_out;	// 数组的大小, 区别是啥？这个代表出参？上面代表入参？
 	d_iov_t		*sg_iovs;	// 指针数组
-} d_sg_list_t;
+} d_sg_list_t;		// 存内存数据的结构体
 
 /**
  * c string buffer

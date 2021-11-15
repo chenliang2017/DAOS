@@ -61,8 +61,8 @@ obj_gen_dtx_mbs(struct daos_shard_tgt *tgts, bool is_ec, uint32_t *tgt_cnt,
 
 	D_ASSERT(tgts != NULL);
 
-	size = sizeof(struct dtx_daos_target) * *tgt_cnt;
-	D_ALLOC(mbs, sizeof(*mbs) + size);
+	size = sizeof(struct dtx_daos_target) * *tgt_cnt;  // 要存放的tgt_cnt个副本
+	D_ALLOC(mbs, sizeof(*mbs) + size);  // 申请空间
 	if (mbs == NULL)
 		return -DER_NOMEM;
 
@@ -70,7 +70,7 @@ obj_gen_dtx_mbs(struct daos_shard_tgt *tgts, bool is_ec, uint32_t *tgt_cnt,
 		if (tgts[i].st_rank == DAOS_TGT_IGNORE)
 			continue;
 
-		mbs->dm_tgts[j++].ddt_id = tgts[i].st_tgt_id;
+		mbs->dm_tgts[j++].ddt_id = tgts[i].st_tgt_id;  // target_id
 	}
 
 	if (j == 0) {
@@ -133,12 +133,12 @@ static void
 obj_rw_reply(crt_rpc_t *rpc, int status, uint64_t epoch,
 	     struct obj_io_context *ioc)
 {
-	struct obj_rw_out	*orwo = crt_reply_get(rpc);
+	struct obj_rw_out	*orwo = crt_reply_get(rpc);  // 组装应答客户端的reply
 	int			 rc;
 	int			 i;
 
-	obj_reply_set_status(rpc, status);
-	obj_reply_map_version_set(rpc, ioc->ioc_map_ver);
+	obj_reply_set_status(rpc, status);  // 执行状态: 成功还是失败
+	obj_reply_map_version_set(rpc, ioc->ioc_map_ver);  // 版本
 	if (DAOS_FAIL_CHECK(DAOS_DTX_START_EPOCH)) {
 		/* Return an stale epoch for test. */
 		orwo->orw_epoch = dss_get_start_epoch() -
@@ -152,14 +152,14 @@ obj_rw_reply(crt_rpc_t *rpc, int status, uint64_t epoch,
 		ioc->ioc_map_ver, orwo->orw_epoch, status);
 
 	if (!ioc->ioc_lost_reply) {
-		rc = crt_reply_send(rpc);
+		rc = crt_reply_send(rpc);  // 回复客户端消息
 		if (rc != 0)
 			D_ERROR("send reply failed: "DF_RC"\n", DP_RC(rc));
 	} else {
 		D_WARN("lost reply rpc %p\n", rpc);
 	}
 
-	if (obj_rpc_is_fetch(rpc)) {
+	if (obj_rpc_is_fetch(rpc)) {  // 读
 		if (orwo->orw_iod_sizes.ca_arrays != NULL) {
 			D_FREE(orwo->orw_iod_sizes.ca_arrays);
 			orwo->orw_iod_sizes.ca_count = 0;
@@ -1332,11 +1332,11 @@ obj_local_rw_internal(crt_rpc_t *rpc, struct obj_io_context *ioc,
 	cond_flags = orw->orw_api_flags;
 
 	/* Prepare IO descriptor */
-	if (obj_rpc_is_update(rpc)) {
+	if (obj_rpc_is_update(rpc)) {  // 写
 		obj_singv_ec_rw_filter(orw->orw_oid, &ioc->ioc_oca, iods, offs,
 				       orw->orw_epoch, orw->orw_flags,
 				       orw->orw_start_shard,
-				       orw->orw_nr, true, false, NULL);
+				       orw->orw_nr, true, false, NULL);  // 纠删码
 		bulk_op = CRT_BULK_GET;
 
 		/** Fault injection - corrupt data from network */
@@ -1359,13 +1359,13 @@ obj_local_rw_internal(crt_rpc_t *rpc, struct obj_io_context *ioc,
 			      orw->orw_epoch, cond_flags, dkey,
 			      orw->orw_nr, iods, iod_csums,
 			      ioc->ioc_coc->sc_props.dcp_dedup_size,
-			      &ioh, dth);
+			      &ioh, dth);  // VOS预留空间?
 		if (rc) {
 			D_ERROR(DF_UOID" Update begin failed: "DF_RC"\n",
 				DP_UOID(orw->orw_oid), DP_RC(rc));
 			goto out;
 		}
-	} else {
+	} else {  // 非写操作
 		uint32_t			 fetch_flags = 0;
 		bool				 ec_deg_fetch;
 		bool				 ec_recov;
@@ -1535,7 +1535,7 @@ obj_local_rw_internal(crt_rpc_t *rpc, struct obj_io_context *ioc,
 	}
 
 	if (obj_rpc_is_fetch(rpc) && !spec_fetch &&
-	    daos_csummer_initialized(ioc->ioc_coc->sc_csummer)) {
+	    daos_csummer_initialized(ioc->ioc_coc->sc_csummer)) {  // 读相关
 		rc = obj_fetch_csum_init(ioc->ioc_coc, orw, orwo);
 		if (rc) {
 			D_ERROR(DF_UOID" fetch csum init failed: %d.\n",
@@ -1558,13 +1558,13 @@ obj_local_rw_internal(crt_rpc_t *rpc, struct obj_io_context *ioc,
 		}
 	}
 
-	if (rma) {
+	if (rma) {  // rdma
 		bulk_bind = orw->orw_flags & ORF_BULK_BIND;
 		rc = obj_bulk_transfer(rpc, bulk_op, bulk_bind,
 				       orw->orw_bulks.ca_arrays, offs,
-				       ioh, NULL, orw->orw_nr, NULL);
+				       ioh, NULL, orw->orw_nr, NULL);  // rdma数据传输
 		if (rc == 0) {
-			bio_iod_flush(biod);
+			bio_iod_flush(biod);  // 写盘
 
 			/* Timeout for the update RPC from client to server is
 			 * 3 seconds. Here, make the server to sleep more than
@@ -1591,7 +1591,7 @@ obj_local_rw_internal(crt_rpc_t *rpc, struct obj_io_context *ioc,
 		D_GOTO(post, rc);
 	}
 
-	if (obj_rpc_is_update(rpc)) {
+	if (obj_rpc_is_update(rpc)) {  // 写操作
 		rc = vos_dedup_verify(ioh);
 		if (rc)
 			goto post;
@@ -1627,7 +1627,7 @@ obj_local_rw_internal(crt_rpc_t *rpc, struct obj_io_context *ioc,
 	if (rc == -DER_CSUM)
 		obj_log_csum_err();
 post:
-	err = bio_iod_post(biod);
+	err = bio_iod_post(biod);  // 写盘？
 	rc = rc ? : err;
 out:
 	/* There is CPU yield after DTX start, and the resent RPC may be handled during that.
@@ -1738,7 +1738,7 @@ obj_ioc_init(uuid_t pool_uuid, uuid_t coh_uuid, uuid_t cont_uuid, int opc,
 
 	D_ASSERT(ioc != NULL);
 	memset(ioc, 0, sizeof(*ioc));
-	ioc->ioc_opc = opc;
+	ioc->ioc_opc = opc;  // Op类型
 
 	rc = ds_cont_find_hdl(pool_uuid, coh_uuid, &coh);
 	if (rc) {
@@ -1970,7 +1970,7 @@ obj_ioc_init_oca(struct obj_io_context *ioc, daos_obj_id_t oid)
 	if (!oca)
 		return -DER_INVAL;
 
-	ioc->ioc_oca = *oca;
+	ioc->ioc_oca = *oca;  // oclass(group+分片数/分片策略)
 	if (daos_oclass_is_ec(oca) && !priv) {
 		/* don't ovewrite cell size of private class */
 		D_ASSERT(ioc->ioc_coc != NULL);
@@ -2332,12 +2332,12 @@ out:
 
 static int
 obj_tgt_update(struct dtx_leader_handle *dlh, void *arg, int idx,
-		  dtx_sub_comp_cb_t comp_cb)
+		  dtx_sub_comp_cb_t comp_cb)  // 执行修改动作接口
 {
 	struct ds_obj_exec_arg	*exec_arg = arg;
 
 	/* handle local operation */
-	if (idx == -1) {
+	if (idx == -1) {  // 主的动作
 		struct obj_rw_in	*orw = crt_req_get(exec_arg->rpc);
 		struct obj_ec_split_req	*split_req = exec_arg->args;
 		daos_iod_t		*iods;
@@ -2353,8 +2353,8 @@ obj_tgt_update(struct dtx_leader_handle *dlh, void *arg, int idx,
 		if (dlh->dlh_handle.dth_prepared)
 			goto comp;
 
-		/* XXX: For non-solo DTX, leader and non-leader will make each
-		 *	own local modification in parallel. If non-leader goes
+		/* XXX: For non-solo(非单副本) DTX, leader and non-leader will make each
+		 *	own local modification in parallel(并行). If non-leader goes
 		 *	so fast as to non-leader may has already moved to handle
 		 *	next RPC but the leader has not really started current
 		 *	modification yet, such as being blocked at bulk data
@@ -2396,7 +2396,7 @@ obj_tgt_update(struct dtx_leader_handle *dlh, void *arg, int idx,
 		if (!dlh->dlh_handle.dth_solo ||
 		    orw->orw_bulks.ca_arrays != NULL ||
 		    orw->orw_bulks.ca_count != 0)
-			pin = true;
+			pin = true;  // 待分析
 		else
 			pin = false;
 
@@ -2411,7 +2411,7 @@ comp:
 	}
 
 	/* Handle the object remotely */
-	return ds_obj_remote_update(dlh, arg, idx, comp_cb);
+	return ds_obj_remote_update(dlh, arg, idx, comp_cb);  // 从分片处理
 }
 
 /* Nonnegative return codes of process_epoch */
@@ -2450,14 +2450,14 @@ process_epoch(uint64_t *epoch, uint64_t *epoch_first, uint32_t *flags)
 void
 ds_obj_rw_handler(crt_rpc_t *rpc)
 {
-	struct obj_rw_in		*orw = crt_req_get(rpc);
-	struct obj_rw_out		*orwo = crt_reply_get(rpc);
+	struct obj_rw_in		*orw = crt_req_get(rpc);     // 入参
+	struct obj_rw_out		*orwo = crt_reply_get(rpc);  // 出参(reply buffer)
 	struct dtx_leader_handle	*dlh = NULL;
 	struct ds_obj_exec_arg		exec_arg = { 0 };
-	struct obj_io_context		ioc = { 0 };
+	struct obj_io_context		ioc = { 0 };             // io句柄
 	uint32_t			flags = 0;
 	uint32_t			dtx_flags = 0;
-	uint32_t			opc = opc_get(rpc->cr_opc);
+	uint32_t			opc = opc_get(rpc->cr_opc);      // Op类型
 	struct obj_ec_split_req		*split_req = NULL;
 	struct dtx_memberships		*mbs = NULL;
 	struct daos_shard_tgt		*tgts = NULL;
@@ -2473,9 +2473,10 @@ ds_obj_rw_handler(crt_rpc_t *rpc)
 	D_ASSERT(orw != NULL);
 	D_ASSERT(orwo != NULL);
 
-	rc = obj_ioc_begin(orw->orw_oid.id_pub, orw->orw_map_ver,
-			   orw->orw_pool_uuid, orw->orw_co_hdl,
-			   orw->orw_co_uuid, opc_get(rpc->cr_opc),
+    // ioc 初始化
+	rc = obj_ioc_begin(orw->orw_oid.id_pub/*oid*/, orw->orw_map_ver/*版本*/,
+			   orw->orw_pool_uuid/*池的uuid*/, orw->orw_co_hdl/*容器句柄*/,
+			   orw->orw_co_uuid/*容器的uuid*/, opc_get(rpc->cr_opc)/*op类型*/,
 			   orw->orw_flags, &ioc);
 	if (rc != 0) {
 		D_ASSERTF(rc < 0, "unexpected error# "DF_RC"\n", DP_RC(rc));
@@ -2495,11 +2496,11 @@ ds_obj_rw_handler(crt_rpc_t *rpc)
 		ioc.ioc_fetch_snap = 1;
 
 	rc = process_epoch(&orw->orw_epoch, &orw->orw_epoch_first,
-			   &orw->orw_flags);
+			   &orw->orw_flags);  // 版本号
 	if (rc == PE_OK_LOCAL)
 		orw->orw_flags &= ~ORF_EPOCH_UNCERTAIN;
 
-	if (obj_rpc_is_fetch(rpc)) {
+	if (obj_rpc_is_fetch(rpc)) {  // 读
 		struct dtx_handle	*dth;
 
 		if (orw->orw_flags & ORF_CSUM_REPORT) {
@@ -2529,12 +2530,12 @@ ds_obj_rw_handler(crt_rpc_t *rpc)
 		D_GOTO(out, rc);
 	}
 
-	tgts = orw->orw_shard_tgts.ca_arrays;
-	tgt_cnt = orw->orw_shard_tgts.ca_count;
+	tgts = orw->orw_shard_tgts.ca_arrays;    // 副本tgt的链表
+	tgt_cnt = orw->orw_shard_tgts.ca_count;  // 副本的数量(不包括主)
 
 	if (!daos_is_zero_dti(&orw->orw_dti) && tgt_cnt != 0) {
 		rc = obj_gen_dtx_mbs(tgts, orw->orw_flags & ORF_EC,
-				     &tgt_cnt, &mbs);
+				     &tgt_cnt, &mbs);  // 事务相关
 		if (rc != 0)
 			D_GOTO(out, rc);
 	}
@@ -2546,7 +2547,7 @@ ds_obj_rw_handler(crt_rpc_t *rpc)
 	if (orw->orw_flags & ORF_DTX_SYNC)
 		dtx_flags |= DTX_SYNC;
 
-	opm = ioc.ioc_coc->sc_pool->spc_metrics[DAOS_OBJ_MODULE];
+	opm = ioc.ioc_coc->sc_pool->spc_metrics[DAOS_OBJ_MODULE];  // 统计相关
 
 	/* Handle resend. */
 	if (orw->orw_flags & ORF_RESEND) {
@@ -2594,7 +2595,7 @@ again2:
 		}
 	}
 
-	/* For leader case, we need to find out the potential conflict
+	/* For leader case, we need to find out the potential(潜在的) conflict
 	 * (or share the same non-committed object/dkey) DTX(s) in the
 	 * CoS (committable) cache, piggyback them via the dispdatched
 	 * RPC to non-leaders. Then the non-leader replicas can commit
@@ -2630,7 +2631,7 @@ again2:
 
 	rc = dtx_leader_begin(ioc.ioc_vos_coh, &orw->orw_dti, &epoch, 1,
 			      version, &orw->orw_oid, dti_cos, dti_cos_cnt,
-			      tgts, tgt_cnt, dtx_flags, mbs, &dlh);
+			      tgts, tgt_cnt, dtx_flags, mbs, &dlh);  // 准备主上的分布式事务
 	if (rc != 0) {
 		D_ERROR(DF_UOID": Failed to start DTX for update "DF_RC".\n",
 			DP_UOID(orw->orw_oid), DP_RC(rc));
@@ -2702,7 +2703,7 @@ out:
 			       DP_DTI(&orw->orw_dti), DP_RC(rc1));
 	}
 
-	obj_rw_reply(rpc, rc, epoch.oe_value, &ioc);
+	obj_rw_reply(rpc, rc, epoch.oe_value, &ioc);  // 应答客户端
 	obj_ec_split_req_fini(split_req);
 	D_FREE(mbs);
 	D_FREE(dti_cos);

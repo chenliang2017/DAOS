@@ -192,8 +192,8 @@ example_daos_key_array()
 	daos_obj_generate_oid(coh, &oid, 0, OC_SX, 0, 0);	  // 将OC_SX(obj的分布策略: 分片数+group数)写到oid的hi字段中
 
 	/** open DAOS object */
-	rc = daos_obj_open(coh, oid, DAOS_OO_RW, &oh, NULL);  // 创建一个obj对象, group数量/分片数量/副本/纠删码/版本等信息已经填好
-	ASSERT(rc == 0, "object open failed with %d", rc);
+	rc = daos_obj_open(coh, oid, DAOS_OO_RW, &oh, NULL);  // 创建一个obj对象, layout/group数量/分片数量/副本/纠删码/版本等信息已经填好
+	ASSERT(rc == 0, "object open failed with %d", rc);    // obj关联到对象句柄oh
 
 	/*
 	 * In this example, we will create an object with 10 dkeys, where each
@@ -212,8 +212,8 @@ example_daos_key_array()
 	dts_buf_render(buf, BUFLEN);	// 构造待发送的数据(1k)
 
 	for (i = 0; i < KEYS; i++) {	// 构造10个deky
-		d_sg_list_t	sgl;
-		d_iov_t		sg_iov;
+		d_sg_list_t	sgl;			// 存内存数据的结构体, 可以理解为d_iov_t结构体数组
+		d_iov_t		sg_iov;	// 用来存一块内存数据
 		daos_iod_t	iod;
 		daos_recx_t	recx;
 
@@ -227,7 +227,7 @@ example_daos_key_array()
 		 * ability to provide an iovec for segmented buffer in memory.
 		 */
 		d_iov_set(&sg_iov, buf, BUFLEN);
-		sgl.sg_nr		= 1;
+		sgl.sg_nr		= 1;  // 存一个d_iov_t结构体
 		sgl.sg_nr_out	= 0;
 		sgl.sg_iovs		= &sg_iov;
 

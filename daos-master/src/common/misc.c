@@ -233,7 +233,7 @@ daos_sgl_data_len(d_sg_list_t *sgl)
 }
 
 daos_size_t
-daos_sgl_buf_size(d_sg_list_t *sgl)
+daos_sgl_buf_size(d_sg_list_t *sgl)      	// sgl指向内存块的大小总和
 {
 	daos_size_t	size = 0;
 	int		i;
@@ -301,11 +301,11 @@ daos_sgls_packed_size(d_sg_list_t *sgls, int nr, daos_size_t *buf_size)
 		return 0;
 	}
 
-	size = daos_sgls_buf_size(sgls, nr);
+	size = daos_sgls_buf_size(sgls, nr);    // sgls指向内存块的大小总和
 	if (buf_size != NULL)
 		*buf_size = size;
 
-	for (i = 0; i < nr; i++) {
+	for (i = 0; i < nr; i++) {              // sgl结构体站的内存大小
 		size += sizeof(sgls[i].sg_nr) + sizeof(sgls[i].sg_nr_out);
 		size += sgls[i].sg_nr * (sizeof(sgls[i].sg_iovs[0].iov_len) +
 				sizeof(sgls[i].sg_iovs[0].iov_buf_len));

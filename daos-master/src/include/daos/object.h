@@ -160,9 +160,9 @@ enum daos_io_mode {
  */
 typedef struct {
 	/** Public section, high level object ID */
-	daos_obj_id_t		id_pub;
+	daos_obj_id_t		id_pub;  // 对象id
 	/** Private section, object shard index */
-	uint32_t		id_shard;
+	uint32_t		id_shard;	 // 分片序号, 在obj内是唯一的
 	/** Padding */
 	uint32_t		id_pad_32;
 } daos_unit_oid_t;
@@ -214,11 +214,11 @@ struct daos_obj_layout {
 #define DAOS_TGT_IGNORE		((d_rank_t)-1)
 /** to identify each obj shard's target */
 struct daos_shard_tgt {
-	uint32_t		st_rank;	/* rank of the shard */
-	uint32_t		st_shard;	/* shard index */
+	uint32_t		st_rank;		/* rank of the shard */
+	uint32_t		st_shard;		/* shard index */
 	uint32_t		st_shard_id;	/* shard id */
-	uint32_t		st_tgt_id;	/* target id */
-	uint16_t		st_tgt_idx;	/* target xstream index */
+	uint32_t		st_tgt_id;		/* target id */
+	uint16_t		st_tgt_idx;		/* target xstream index */
 	/* target idx for EC obj, only used for client */
 	uint16_t		st_ec_tgt;
 };

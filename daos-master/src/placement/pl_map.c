@@ -596,7 +596,7 @@ pl_map_query(uuid_t po_uuid, struct pl_map_attr *attr)
  * Select leader replica for the given object's shard.
  *
  * \param [IN]  oid             The object identifier. 对象ID
- * \param [IN]  grp_idx         The group index. group的序号
+ * \param [IN]  grp_idx         The group index. group的序号, 从0开始
  * \param [IN]  grp_size        Group size of obj layout. 副本数
  * \param [OUT] tgt_id          If non-NULL, Require leader target id.
  * \param [IN]  pl_get_shard    The callback function to parse out pl_obj_shard
@@ -680,7 +680,7 @@ pl_select_leader(daos_obj_id_t oid, uint32_t grp_idx, uint32_t grp_size,
 		return -DER_INVAL;
 
 	if (replicas == 1) {  // 单副本
-		pos = grp_idx * grp_size;  
+		pos = grp_idx * grp_size;   // 起始分片号
 		shard = pl_get_shard(data, pos);
 		if (shard->po_target == -1)
 			return -DER_IO;

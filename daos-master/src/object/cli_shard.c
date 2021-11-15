@@ -71,7 +71,7 @@ dc_obj_shard_open(struct dc_object *obj, daos_unit_oid_t oid,
 	D_ASSERT(shard->do_obj == NULL);
 
 	rc = dc_cont_tgt_idx2ptr(obj->cob_coh, shard->do_target_id,
-				 &map_tgt);
+				 &map_tgt);  // 根据target-id找target结构
 	if (rc)
 		return rc;
 
@@ -1119,8 +1119,8 @@ obj_shard_ptr2pool(struct dc_obj_shard *shard)
 
 int
 dc_obj_shard_rw(struct dc_obj_shard *shard, enum obj_rpc_opc opc,
-		void *shard_args, struct daos_shard_tgt *fw_shard_tgts,
-		uint32_t fw_cnt, tse_task_t *task)
+		void *shard_args, struct daos_shard_tgt *fw_shard_tgts/*副本tgt集合*/,
+		uint32_t fw_cnt/*副本的数量*/, tse_task_t *task)
 {
 	struct shard_rw_args	*args = shard_args;
 	struct shard_auxi_args	*auxi = &args->auxi;
@@ -1162,11 +1162,12 @@ dc_obj_shard_rw(struct dc_obj_shard *shard, enum obj_rpc_opc opc,
 	if (auxi->epoch.oe_flags & DTX_EPOCH_UNCERTAIN)
 		flags |= ORF_EPOCH_UNCERTAIN;
 
+    // 通过容器句柄获取容器的uuid
 	rc = dc_cont_hdl2uuid(shard->do_co_hdl, &cont_hdl_uuid, &cont_uuid);
 	if (rc != 0)
 		D_GOTO(out, rc);
 
-	pool = obj_shard_ptr2pool(shard);
+	pool = obj_shard_ptr2pool(shard);  // 通过容器找池
 	if (pool == NULL)
 		D_GOTO(out, rc = -DER_NO_HDL);
 
@@ -1310,7 +1311,7 @@ dc_obj_shard_rw(struct dc_obj_shard *shard, enum obj_rpc_opc opc,
 				D_ERROR("crt_req_set_timeout error: %d", rc);
 		    }
 
-		rc = daos_rpc_send(req, task);
+		rc = daos_rpc_send(req, task);  // 发送
 	}
 
 	return rc;

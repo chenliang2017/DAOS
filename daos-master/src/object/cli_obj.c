@@ -64,7 +64,7 @@ struct obj_auxi_tgt_list {
 
 /* Auxiliary args for object I/O */
 struct obj_auxi_args {
-	tse_task_t			*obj_task;
+	tse_task_t			*obj_task;			// obj关联的task结构体
 	daos_handle_t			 th;			// 事务句柄
 	struct dc_object		*obj;			// 对象信息
 	int				 opc;					// Op操作的类型
@@ -98,7 +98,7 @@ struct obj_auxi_args {
 	/* 64-bits alignment, bitmap for retry next replicas. */
 	uint8_t				 retry_bitmap[OBJ_INLINE_BTIMAP];
 	struct obj_req_tgts	 req_tgts;
-	crt_bulk_t			*bulks;
+	crt_bulk_t			*bulks;				// bulk句柄
 	uint32_t			 iod_nr;			// akey的数量
 	uint32_t			 initial_shard;
 	d_list_t			 shard_task_head;
@@ -131,7 +131,7 @@ D_CASSERT(sizeof(struct obj_auxi_args) + sizeof(struct daos_task_args) <=
  */
 int
 obj_shard_open(struct dc_object *obj, unsigned int shard, unsigned int map_ver,
-	       struct dc_obj_shard **shard_ptr)
+	       struct dc_obj_shard **shard_ptr)  // 根据分片的shard-id找对应的结构体并赋值
 {
 	struct dc_obj_shard	*obj_shard;
 	bool			 lock_upgraded = false;
@@ -151,7 +151,8 @@ open_retry:
 		D_GOTO(unlock, rc = -DER_STALE);
 	}
 
-	obj_shard = &obj->cob_shards->do_shards[shard];
+	// 根据id找到结构体
+	obj_shard = &obj->cob_shards->do_shards[shard];  // 用obj分配好的内存, 计算obj layout时已经赋值完毕
 
 	/* Skip the invalid shards and targets */
 	if (obj_shard->do_shard == -1 ||
@@ -162,7 +163,7 @@ open_retry:
 
 	D_DEBUG(DB_TRACE, "Open object shard %d\n", shard);
 
-	if (obj_shard->do_obj == NULL) {
+	if (obj_shard->do_obj == NULL) {  // 计算layout时未赋值
 		daos_unit_oid_t	 oid;
 
 		/* upgrade to write lock to safely update open shard cache */
@@ -173,13 +174,13 @@ open_retry:
 			goto open_retry;
 		}
 
-		oid.id_shard  = obj_shard->do_shard;
-		oid.id_pub    = obj->cob_md.omd_id;
+		oid.id_shard  = obj_shard->do_shard;    // 分片序号, 在obj内是唯一的
+		oid.id_pub    = obj->cob_md.omd_id;		// 对象ID
 		oid.id_pad_32 = 0;
 		/* NB: obj open is a local operation, so it is ok to call
 		 * it in sync mode, at least for now.
 		 */
-		rc = dc_obj_shard_open(obj, oid, obj->cob_mode, obj_shard);
+		rc = dc_obj_shard_open(obj, oid, obj->cob_mode, obj_shard);  // target信息填充到obj_shard中
 		if (rc)
 			D_GOTO(unlock, rc);
 	}
@@ -365,9 +366,9 @@ obj_layout_create(struct dc_object *obj, bool refresh)
 		struct dc_obj_shard *obj_shard;
 
 		obj_shard = &obj->cob_shards->do_shards[i];  // 每一个分片(target)
-		obj_shard->do_shard = layout->ol_shards[i].po_shard;
+		obj_shard->do_shard = layout->ol_shards[i].po_shard;  // 分片号
 		obj_shard->do_shard_idx = i;
-		obj_shard->do_target_id = layout->ol_shards[i].po_target;
+		obj_shard->do_target_id = layout->ol_shards[i].po_target;	// 分片关联的target的id号
 		obj_shard->do_fseq = layout->ol_shards[i].po_fseq;
 		obj_shard->do_rebuilding = layout->ol_shards[i].po_rebuilding;
 	}
@@ -713,8 +714,8 @@ obj_dkey2grpmemb(struct dc_object *obj, uint64_t hash, uint32_t map_ver,
 		return grp_idx;
 
 	*grp_size = obj_get_grp_size(obj);  // 副本数
-	*start_shard = grp_idx * *grp_size; // dkey落到了某个group上, start_shard是这个group上第一个target的编号 
-										// 意味着同一个obj上, target是连续编号的
+	*start_shard = grp_idx * *grp_size; // dkey落到了某个group上, start_shard是这个group上第一个分片的编号 
+										// 意味着同一个obj上, shard是连续编号的
 	return 0;
 }
 
@@ -905,8 +906,8 @@ obj_op_is_ec_fetch(struct obj_auxi_args *obj_auxi)
  * Query target info. ec_tgt_idx only used for EC obj fetch.
  */
 static int
-obj_shard_tgts_query(struct dc_object *obj, uint32_t map_ver, uint32_t shard,
-		     uint16_t ec_tgt_idx, struct daos_shard_tgt *shard_tgt,
+obj_shard_tgts_query(struct dc_object *obj, uint32_t map_ver, uint32_t shard/*主shard的编号*/,
+		     uint16_t ec_tgt_idx/*0*/, struct daos_shard_tgt *shard_tgt,
 		     struct obj_auxi_args *obj_auxi)
 {
 	struct dc_obj_shard	*obj_shard;
@@ -919,7 +920,7 @@ obj_shard_tgts_query(struct dc_object *obj, uint32_t map_ver, uint32_t shard,
 	shard_tgt->st_ec_tgt = ec_tgt_idx;
 	start_shard = shard - ec_tgt_idx;
 
-	if (obj_auxi->is_ec_obj &&
+	if (obj_auxi->is_ec_obj &&  // 纠删码
 	    (obj_auxi->csum_retry || obj_auxi->tx_uncertain ||
 	     obj_auxi->force_degraded || DAOS_FAIL_CHECK(DAOS_OBJ_FORCE_DEGRADE))) {
 		if (obj_auxi->tx_uncertain) {
@@ -933,7 +934,7 @@ obj_shard_tgts_query(struct dc_object *obj, uint32_t map_ver, uint32_t shard,
 		goto ec_deg_get;
 	}
 shard_open:
-	rc = obj_shard_open(obj, shard, map_ver, &obj_shard);
+	rc = obj_shard_open(obj, shard, map_ver, &obj_shard);  // obj_shard中填充target信息
 	if (obj_auxi->opc == DAOS_OBJ_RPC_FETCH &&
 	    DAOS_FAIL_CHECK(DAOS_FAIL_SHARD_FETCH) &&
 	    daos_shard_in_fail_value(shard + 1)) {
@@ -1052,10 +1053,10 @@ obj_req_tgts_dump(struct obj_req_tgts *req_tgts)
 
 static int
 obj_shards_2_fwtgts(struct dc_object *obj, uint32_t map_ver, uint8_t *bit_map,
-		    uint32_t start_shard/*dkey哈希落到的group的起始target的编号*/, uint32_t shard_cnt/*副本数*/, uint32_t grp_nr/*写的时候该值为1*/,
+		    uint32_t start_shard/*dkey哈希落到的group的起始分片的编号*/, uint32_t shard_cnt/*副本数*/, uint32_t grp_nr/*写的时候该值为1*/,
 		    uint32_t flags, struct obj_auxi_args *obj_auxi)
 {
-	struct obj_req_tgts	*req_tgts = &obj_auxi->req_tgts;
+	struct obj_req_tgts	*req_tgts = &obj_auxi->req_tgts;  // 取地址, 赋值使用
 	struct daos_shard_tgt	*tgt = NULL;
 	uint32_t		 leader_shard = -1;
 	uint32_t		 i, j;
@@ -1064,11 +1065,11 @@ obj_shards_2_fwtgts(struct dc_object *obj, uint32_t map_ver, uint8_t *bit_map,
 	int			 rc;
 
 	D_ASSERT(shard_cnt >= 1);
-	grp_size = shard_cnt / grp_nr;  // 副本数
+	grp_size = shard_cnt / grp_nr;  // 副本的数量
 	D_ASSERT(grp_size * grp_nr == shard_cnt);
 	if (cli_disp || bit_map != NIL_BITMAP)
 		D_ASSERT(grp_nr == 1);
-	req_tgts->ort_start_shard = start_shard;  // target的起始编号
+	req_tgts->ort_start_shard = start_shard;  // 分片的起始编号
 	req_tgts->ort_srv_disp = (srv_io_mode != DIM_CLIENT_DISPATCH) &&
 				  !cli_disp && grp_size > 1;
 
@@ -1109,9 +1110,9 @@ obj_shards_2_fwtgts(struct dc_object *obj, uint32_t map_ver, uint8_t *bit_map,
 		uint32_t		 fail_nr;
 
 		shard_idx = start_shard + i * grp_size;
-		head = tgt = req_tgts->ort_shard_tgts + i * grp_size;  // group的主(group的第一个target)
+		head = tgt = req_tgts->ort_shard_tgts + i * grp_size;  // 存储group的主(group的第一个分片)
 		if (req_tgts->ort_srv_disp) {  // 服务端分发
-			rc = obj_grp_leader_get(obj, shard_idx, map_ver);
+			rc = obj_grp_leader_get(obj, shard_idx, map_ver);  // 选主
 			if (rc < 0) {
 				D_ERROR(DF_OID" no valid shard %u, grp size %u "
 					"grp nr %u, shards %u, reps %u, is %s: "
@@ -1125,7 +1126,7 @@ obj_shards_2_fwtgts(struct dc_object *obj, uint32_t map_ver, uint8_t *bit_map,
 			}
 			leader_shard = rc;  // 主
 			rc = obj_shard_tgts_query(obj, map_ver, leader_shard,
-						  0, tgt++, obj_auxi);
+						  0, tgt++, obj_auxi);  // 将leader_shard关联的tgt信息填充到tgt结构体中
 			if (rc != 0)
 				return rc;
 
@@ -1139,7 +1140,7 @@ obj_shards_2_fwtgts(struct dc_object *obj, uint32_t map_ver, uint8_t *bit_map,
 				continue;
 			rc = obj_shard_tgts_query(obj, map_ver, shard_idx,
 						  shard_idx - start_shard,
-						  tgt++, obj_auxi);
+						  tgt++, obj_auxi);  // 找各个副本的target信息并填充
 			if (unlikely(DAOS_FAIL_CHECK(DAOS_FAIL_SHARD_NONEXIST)))
 				rc = -DER_NONEXIST;
 			if (rc == -DER_NONEXIST && obj_auxi->is_ec_obj) {
@@ -1760,7 +1761,7 @@ out:
 
 /* prepare the bulk handle(s) for obj request */
 int
-obj_bulk_prep(d_sg_list_t *sgls, unsigned int nr, bool bulk_bind,
+obj_bulk_prep(d_sg_list_t *sgls, unsigned int nr/*akey的数量*/, bool bulk_bind,
 	      crt_bulk_perm_t bulk_perm, tse_task_t *task,
 	      crt_bulk_t **p_bulks)
 {
@@ -1841,7 +1842,7 @@ obj_rw_bulk_prep(struct dc_object *obj, daos_iod_t *iods, d_sg_list_t *sgls,
 	/* inline fetch needs to pack sgls buffer into RPC so uses it to check
 	 * if need bulk transferring.
 	 */
-	sgls_size = daos_sgls_packed_size(sgls, nr, NULL);
+	sgls_size = daos_sgls_packed_size(sgls, nr, NULL);  // // sgls指向内存块的大小总和 + sgls结构体占得内存大小
 	if (sgls_size >= DAOS_BULK_LIMIT || obj_auxi->reasb_req.orr_tgt_nr > 1) {
 		bulk_perm = update ? CRT_BULK_RO : CRT_BULK_RW;
 		rc = obj_bulk_prep(sgls, nr, bulk_bind, bulk_perm, task,
@@ -2355,7 +2356,7 @@ obj_req_get_tgts(struct dc_object *obj, int *shard, daos_key_t *dkey,
 {
 	struct obj_req_tgts	*req_tgts = &obj_auxi->req_tgts;
 	enum obj_rpc_opc	opc = obj_auxi->opc;
-	uint32_t		shard_idx;      // dkey落到某个group上, 这个group里的第一个target的编号
+	uint32_t		shard_idx;      // dkey落到某个group上, 这个group里的第一个分片的编号
 	uint32_t		shard_cnt = 0;  // 副本数
 	uint32_t		grp_nr;
 	uint32_t		flags = 0;
@@ -2415,7 +2416,7 @@ obj_req_get_tgts(struct dc_object *obj, int *shard, daos_key_t *dkey,
 		} else {  // 写流程
 			grp_nr = 1;
 			rc = obj_dkey2grpmemb(obj, dkey_hash, map_ver,
-					      &shard_idx/*出参: dkey哈希到某个group, 这个group的起始target的编号*/, &shard_cnt/*出参: 副本数*/);
+					      &shard_idx/*出参: dkey哈希到某个group, 这个group的起始分片的编号*/, &shard_cnt/*出参: 副本数*/);
 			if (rc != 0)
 				goto out;
 			D_DEBUG(DB_TRACE, "shard_idx %d shard_cnt %d\n",
@@ -2467,8 +2468,9 @@ obj_req_get_tgts(struct dc_object *obj, int *shard, daos_key_t *dkey,
 		D_GOTO(out, rc);
 	}
 
-	rc = obj_shards_2_fwtgts(obj, map_ver/*版本号*/, bit_map, shard_idx/*dkey哈希出来的group的起始target编码*/,
-				 shard_cnt/*副本数*/, grp_nr, flags, obj_auxi);
+    // 计算dkey映射到的target的集合, 存放在obj_auxi.req_tgts中
+	rc = obj_shards_2_fwtgts(obj, map_ver/*版本号*/, bit_map, shard_idx/*dkey哈希出来的group的起始分片编码*/,
+				 shard_cnt/*副本数*/, grp_nr/*1, 只有punch时不为1*/, flags, obj_auxi);  
 	if (rc != 0) {
 		if (rc != -DER_SHARDS_OVERLAP && rc != -DER_TGT_RETRY)
 			D_ERROR("opc %d "DF_OID", obj_shards_2_fwtgts failed "
@@ -2631,12 +2633,12 @@ static int
 shard_io(tse_task_t *task, struct shard_auxi_args *shard_auxi)
 {
 	struct dc_object		*obj = shard_auxi->obj;
-	struct obj_auxi_args		*obj_auxi = shard_auxi->obj_auxi;
+	struct obj_auxi_args	*obj_auxi = shard_auxi->obj_auxi;
 	struct dc_obj_shard		*obj_shard;
 	struct obj_req_tgts		*req_tgts;
-	struct daos_shard_tgt		*fw_shard_tgts;
-	uint32_t			 fw_cnt;
-	int				 rc;
+	struct daos_shard_tgt	*fw_shard_tgts;
+	uint32_t			 	fw_cnt;
+	int				 		rc;
 
 	D_ASSERT(obj != NULL);
 	rc = obj_shard_open(obj, shard_auxi->shard, shard_auxi->map_ver,
@@ -2653,11 +2655,11 @@ shard_io(tse_task_t *task, struct shard_auxi_args *shard_auxi)
 	D_ASSERT(shard_auxi->grp_idx < req_tgts->ort_grp_nr);
 	fw_shard_tgts = req_tgts->ort_srv_disp ?
 			(req_tgts->ort_shard_tgts +
-			 shard_auxi->grp_idx * req_tgts->ort_grp_size + 1) :
+			 shard_auxi->grp_idx * req_tgts->ort_grp_size + 1) :  // 所有的副本tgt集合(不包括主)
 			 NULL;
-	fw_cnt = req_tgts->ort_srv_disp ? (req_tgts->ort_grp_size - 1) : 0;
+	fw_cnt = req_tgts->ort_srv_disp ? (req_tgts->ort_grp_size - 1) : 0;  // 副本tgt的数量(不包括主)
 	rc = shard_auxi->shard_io_cb(obj_shard, obj_auxi->opc, shard_auxi,
-				     fw_shard_tgts, fw_cnt, task);
+				     fw_shard_tgts, fw_cnt, task);  // 执行外层的回调函数: dc_obj_shard_rw
 	obj_shard_close(obj_shard);
 
 	return rc;
@@ -2745,8 +2747,8 @@ obj_req_fanout(struct dc_object *obj, struct obj_auxi_args *obj_auxi,
 	bool			 require_shard_task = false;
 	int			 rc = 0;
 
-	tgt = req_tgts->ort_shard_tgts;
-	tgts_nr = req_tgts->ort_srv_disp ? req_tgts->ort_grp_nr :
+	tgt = req_tgts->ort_shard_tgts;  // deky要发送的所有target的列表
+	tgts_nr = req_tgts->ort_srv_disp ? req_tgts->ort_grp_nr :  // srv_dispatch只要发送给主
 		  req_tgts->ort_grp_nr * req_tgts->ort_grp_size;
 
 	/* See shard_io_task. */
@@ -2837,7 +2839,7 @@ obj_req_fanout(struct dc_object *obj, struct obj_auxi_args *obj_auxi,
 	}
 
 	/* if with only one target, need not to create separate shard task */
-	if (tgts_nr == 1 && !require_shard_task) {
+	if (tgts_nr == 1 && !require_shard_task) {  // 服务端分发时, 走此分支
 		shard_auxi = obj_embedded_shard_arg(obj_auxi);
 		D_ASSERT(shard_auxi != NULL);
 		shard_auxi_set_param(shard_auxi, map_ver, tgt->st_shard,
@@ -2848,7 +2850,7 @@ obj_req_fanout(struct dc_object *obj, struct obj_auxi_args *obj_auxi,
 		shard_auxi->obj_auxi = obj_auxi;
 		shard_auxi->shard_io_cb = io_cb;
 		rc = io_prep_cb(shard_auxi, obj, obj_auxi, dkey_hash,
-				shard_auxi->grp_idx);
+				shard_auxi->grp_idx);  // 执行外层回调: shard_rw_prep
 		if (rc)
 			goto out_task;
 
@@ -4043,7 +4045,7 @@ obj_task_init_common(tse_task_t *task, int opc, uint32_t map_ver,
 	struct obj_auxi_args	*obj_auxi;
 
 	obj_auxi = tse_task_stack_push(task, sizeof(*obj_auxi));  // 在tse_task_private.dtp_buf的顶部预留指定空间给obj_auxi
-	if (obj_is_modification_opc(opc))	// 修改操作
+	if (obj_is_modification_opc(opc))
 		obj_auxi->spec_group = 0;		// 修改操作不能指定group
 	obj_auxi->opc = opc;				// Op的操作类型
 	obj_auxi->map_ver_req = map_ver;	// Op请求对应的pool_map的版本
@@ -4078,7 +4080,7 @@ shard_rw_prep(struct shard_auxi_args *shard_auxi, struct dc_object *obj,
 	      struct obj_auxi_args *obj_auxi, uint64_t dkey_hash,
 	      uint32_t grp_idx)
 {
-	daos_obj_rw_t		*obj_args;
+	daos_obj_rw_t			*obj_args;
 	struct shard_rw_args	*shard_arg;
 	struct obj_reasb_req	*reasb_req;
 	struct obj_tgt_oiod	*toiod;
@@ -4090,14 +4092,14 @@ shard_rw_prep(struct shard_auxi_args *shard_auxi, struct dc_object *obj,
 		daos_dti_gen(&shard_arg->dti,
 			     obj_auxi->opc == DAOS_OBJ_RPC_FETCH ||
 			     srv_io_mode != DIM_DTX_FULL_ENABLED ||
-			     daos_obj_is_echo(obj->cob_md.omd_id));
+			     daos_obj_is_echo(obj->cob_md.omd_id));  // 生成事务句柄
 	else
 		dc_tx_get_dti(obj_auxi->th, &shard_arg->dti);
 
 	obj_auxi->rw_args.api_args	= obj_args;
-	shard_arg->api_args		= obj_args;
+	shard_arg->api_args			= obj_args;
 	shard_arg->dkey_hash		= dkey_hash;
-	shard_arg->bulks		= obj_auxi->bulks;
+	shard_arg->bulks			= obj_auxi->bulks;
 	if (obj_auxi->req_reasbed) {
 		reasb_req = &obj_auxi->reasb_req;
 		if (reasb_req->tgt_oiods != NULL) {
@@ -4486,7 +4488,7 @@ dc_obj_update(tse_task_t *task, struct dtx_epoch *epoch, uint32_t map_ver,
 
 	obj_task_init_common(task, DAOS_OBJ_RPC_UPDATE, map_ver, args->th,
 			     &obj_auxi, obj);  // obj_auxi的初始化
-	rc = obj_rw_req_reassemb(obj, args, NULL, obj_auxi);
+	rc = obj_rw_req_reassemb(obj, args, NULL, obj_auxi);  // 纠删码相关
 	if (rc) {
 		D_ERROR(DF_OID" obj_req_reassemb failed %d.\n",
 			DP_OID(obj->cob_md.omd_id), rc);
@@ -4497,7 +4499,7 @@ dc_obj_update(tse_task_t *task, struct dtx_epoch *epoch, uint32_t map_ver,
 	dkey_hash = obj_dkey2hash(obj->cob_md.omd_id, args->dkey);  // 计算dkey的哈希值
 	rc = obj_req_get_tgts(obj, NULL, args->dkey, dkey_hash,
 			      obj_auxi->reasb_req.tgt_bitmap/*ec相关*/, map_ver, false,
-			      false, obj_auxi);
+			      false, obj_auxi);  // 计算dkey映射到的target的集合, 存放在obj_auxi.req_tgts中
 	if (rc != 0) {
 		if (rc != -DER_SHARDS_OVERLAP) {
 			int rc1;
@@ -4529,7 +4531,7 @@ dc_obj_update(tse_task_t *task, struct dtx_epoch *epoch, uint32_t map_ver,
 		return dc_tx_convert(obj, DAOS_OBJ_RPC_UPDATE, task);
 	}
 
-	rc = tse_task_register_comp_cb(task, obj_comp_cb, NULL, 0);  // 注册task完成后的回调函数？
+	rc = tse_task_register_comp_cb(task, obj_comp_cb, NULL, 0);  // 注册task完成后的回调函数, 服务端应答后的回调
 	if (rc != 0) {
 		D_ERROR("update task %p, register_comp_cb "DF_RC"\n",
 			task, DP_RC(rc));
@@ -4550,8 +4552,8 @@ dc_obj_update(tse_task_t *task, struct dtx_epoch *epoch, uint32_t map_ver,
 		DP_OID(obj->cob_md.omd_id), dkey_hash);
 
 	rc = obj_rw_bulk_prep(obj, args->iods, args->sgls, args->nr, true,
-			      obj_auxi->req_tgts.ort_srv_disp, task, obj_auxi);
-	if (rc != 0)
+			      obj_auxi->req_tgts.ort_srv_disp, task, obj_auxi);  // 将sgl中数据地址长度信息传到mercury库中, 并获取一个相关的句柄
+	if (rc != 0)													// 句柄保存在变量: obj_auxi->bulks
 		goto out_task;
 
 	rc = obj_req_fanout(obj, obj_auxi, dkey_hash, map_ver, epoch,

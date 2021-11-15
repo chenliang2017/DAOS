@@ -151,9 +151,9 @@ struct dtx_leader_handle {
 	ABT_future			dlh_future;
 
 	/* How many sub leader transaction */
-	uint32_t			dlh_sub_cnt;
+	uint32_t			dlh_sub_cnt;        // 从的数量
 	/* Sub transaction handle to manage the dtx leader */
-	struct dtx_sub_status		*dlh_subs;
+	struct dtx_sub_status		*dlh_subs;  // 指向所有从使用的内存空间, 紧邻当前结构体
 	dtx_agg_cb_t			dlh_agg_cb;
 	void				*dlh_agg_cb_arg;
 };

@@ -62,8 +62,8 @@ struct dc_obj_shard {
 	uint8_t			do_target_idx;	/* target VOS index in node */
 };
 
-#define do_shard	do_pl_shard.po_shard
-#define do_target_id	do_pl_shard.po_target
+#define do_shard	do_pl_shard.po_shard			// 分片序号, 在obj内是唯一的
+#define do_target_id	do_pl_shard.po_target		// 这个分片关联的target的id号, target id应该是全局唯一的
 #define do_fseq		do_pl_shard.po_fseq
 #define do_rebuilding	do_pl_shard.po_rebuilding
 
@@ -83,7 +83,7 @@ struct dc_object {
 	 * and have no metadata in OI table, DAOS only stores OID and pool map
 	 * version in it.
 	 */
-	struct daos_obj_md	 cob_md;
+	struct daos_obj_md	 cob_md;				// 对象的元数据信息
 	/** object class attribute */
 	struct daos_oclass_attr	 cob_oca;			// 对象的oclass(副本/纠删码 + 分片数 + group数)
 	/** container open handle */
@@ -613,12 +613,12 @@ struct dc_object *obj_hdl2ptr(daos_handle_t oh);
 
 /* handles, pointers for handling I/O */
 struct obj_io_context {
-	struct ds_cont_hdl	*ioc_coh;
+	struct ds_cont_hdl		*ioc_coh;
 	struct ds_cont_child	*ioc_coc;
-	struct daos_oclass_attr	 ioc_oca;
+	struct daos_oclass_attr	 ioc_oca;	// oclass(冗余+group)
 	daos_handle_t		 ioc_vos_coh;
 	uint32_t		 ioc_map_ver;
-	uint32_t		 ioc_opc;
+	uint32_t		 ioc_opc;			// Op类型
 	uint64_t		 ioc_start_time;
 	uint64_t		 ioc_io_size;
 	uint32_t		 ioc_began:1,

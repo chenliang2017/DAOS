@@ -1446,7 +1446,7 @@ crt_reply_send(crt_rpc_t *req)
 	} else {
 		D_DEBUG(DB_ALL, "call crt_hg_reply_send: rpc_priv: %p\n",
 			rpc_priv);
-		rc = crt_hg_reply_send(rpc_priv);
+		rc = crt_hg_reply_send(rpc_priv);  // 回复应答
 		if (rc != 0)
 			D_ERROR("crt_hg_reply_send failed, rc: %d,opc: %#x.\n",
 				rc, rpc_priv->crp_pub.cr_opc);

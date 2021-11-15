@@ -58,8 +58,8 @@ struct pl_target_grp {
 };
 
 struct pl_obj_shard {
-	uint32_t	po_shard;	/* shard index */
-	uint32_t	po_target;	/* target id */
+	uint32_t	po_shard;	/* shard index */ 	// 分片序号, 在obj内是唯一的；
+	uint32_t	po_target;	/* target id */		// 这个分片关联的target的id号, target id应该是全局唯一的
 	uint32_t	po_fseq;	/* The latest failure sequence */
 	uint32_t	po_rebuilding:1; /* rebuilding status */
 };
@@ -68,8 +68,8 @@ struct pl_obj_layout {
 	uint32_t		 ol_ver;		// 版本信息
 	uint32_t		 ol_grp_size;	// group中target的数量(副本数)
 	uint32_t		 ol_grp_nr;		// group的数量(类似ceph中的pg数)
-	uint32_t		 ol_nr;			// target的总数
-	struct pl_obj_shard	*ol_shards;
+	uint32_t		 ol_nr;			// target的总数, ol_grp_size * ol_grp_nr
+	struct pl_obj_shard	*ol_shards;	// obj关联的所有分片的信息
 };
 
 /** common header of all placement map */
