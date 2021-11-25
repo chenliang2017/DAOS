@@ -126,12 +126,12 @@ static void sched_run(ABT_sched sched)
         if (!run_cnt_nowait) {
             ABTI_pool *p_pool = ABTI_pool_get_ptr(pools[0]);
             ABT_thread thread;
-            if (p_pool->optional_def.p_pop_wait) {
+            if (p_pool->optional_def.p_pop_wait) {  // 目前都有定义p_pop_wait, 所以会走此分支
                 thread = ABTI_pool_pop_wait(p_pool, 0.1,
                                             ABT_POOL_CONTEXT_OP_POOL_OTHER);
             } else if (p_pool->deprecated_def.p_pop_timedwait) {
                 thread =
-                    ABTI_pool_pop_timedwait(p_pool, ABTI_get_wtime() + 0.1);
+                    ABTI_pool_pop_timedwait(p_pool, ABTI_get_wtime() + 0.1);  // 这里受时间跳变影响，且无法修改
             } else {
                 /* No "wait" pop, so let's use a normal one. */
                 thread = ABTI_pool_pop(p_pool, ABT_POOL_CONTEXT_OP_POOL_OTHER);

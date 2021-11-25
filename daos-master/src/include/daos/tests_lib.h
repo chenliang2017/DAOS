@@ -66,7 +66,7 @@ uint64_t *dts_rand_iarr_alloc(int nr);
 void dts_rand_iarr_set(uint64_t *array, int nr, int base, bool shuffle);
 
 static inline double
-dts_time_now(void)
+dts_time_now(void)  // 绝对时间, 自1970-01-01 00:00:00以来经过的秒数
 {
 	struct timeval	tv;
 

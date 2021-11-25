@@ -239,11 +239,11 @@ int ABT_cond_wait(ABT_cond cond, ABT_mutex mutex)
  *
  * @param[in] cond     condition variable handle
  * @param[in] mutex    mutex handle
- * @param[in] abstime  absolute time for timeout
+ * @param[in] abstime  absolute time for timeout, 未来的一个绝对时间戳
  * @return Error code
  */
 int ABT_cond_timedwait(ABT_cond cond, ABT_mutex mutex,
-                       const struct timespec *abstime)
+                       const struct timespec *abstime/*绝对时间戳*/)  
 {
     ABTI_UB_ASSERT(abstime);
 

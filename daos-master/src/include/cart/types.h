@@ -214,7 +214,7 @@ struct crt_proto_format {
 	/** Array of RPC definitions */
 	struct crt_proto_rpc_format	*cpf_prf;		// 远程调用集
 	/** protocol base opcode */
-	crt_opcode_t			 cpf_base;			// 操作码
+	crt_opcode_t			 cpf_base;			// 操作码(非Op类型)
 
 };
 

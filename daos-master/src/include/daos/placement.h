@@ -17,6 +17,7 @@
 #include <daos/object.h>
 
 /** default placement map when none are specified */
+// 默认采用jump_hash算法算分布
 #define DEFAULT_PL_TYPE PL_TYPE_JUMP_MAP
 
 /** types of placement maps */
@@ -24,14 +25,14 @@ typedef enum {
 	PL_TYPE_UNKNOWN,
 	/** only support ring map for the time being */
 	PL_TYPE_RING,
-	/**Prototype placement map*/
+	/**Prototype placement map, jump_hash算法 */
 	PL_TYPE_JUMP_MAP,
 	/** reserved */
 	PL_TYPE_PETALS,
 } pl_map_type_t;
 
 struct pl_map_init_attr {
-	pl_map_type_t		ia_type;
+	pl_map_type_t		ia_type;	// 分布算法
 	union {
 		struct pl_ring_init_attr {
 			pool_comp_type_t	domain;
@@ -50,7 +51,7 @@ struct pl_target {
 /** A group of targets */
 struct pl_target_grp {
 	/** pool map version to generate this layout */
-	uint32_t		 tg_ver;
+	uint32_t		 	 tg_ver;
 	/** number of targets */
 	unsigned int		 tg_target_nr;
 	/** array of targets */

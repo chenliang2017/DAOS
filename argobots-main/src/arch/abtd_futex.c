@@ -5,9 +5,9 @@
 
 #include "abti.h"
 
-#ifndef ABT_CONFIG_ACTIVE_WAIT_POLICY
+#ifndef ABT_CONFIG_ACTIVE_WAIT_POLICY  // ABT_CONFIG_ACTIVE_WAIT_POLICY宏未定义
 
-#ifdef ABT_CONFIG_USE_LINUX_FUTEX
+#ifdef ABT_CONFIG_USE_LINUX_FUTEX  // 该宏不确认是否定义, 若有定义可以直接注释掉, 使用pthread方式
 
 /* Use Linux futex. */
 #include <unistd.h>
@@ -138,7 +138,11 @@ void ABTD_futex_timedwait_and_unlock(ABTD_futex_multiple *p_futex,
     sync_obj.p_next = p_next;
     p_futex->p_next = (void *)&sync_obj;
     ABTD_spinlock_release(p_lock);
-    pthread_cond_timedwait(&sync_obj.cond, &sync_obj.mutex, &wait_time);
+    pthread_cond_timedwait(&sync_obj.cond, &sync_obj.mutex, &wait_time);  // 睡眠等待条件变量为真
+    // 条件变量是对sync_obj.val进行等待的，该值为1是触发条件唤醒这里的等待
+    // ABTD_futex_resume函数就是唤醒这里的地方
+    // 可以参考 src/pool/fifo_wait.c : pool_pop_wait() 函数中#else的实现
+    // 也可以使用链接中的方法来达到相对时间等待的目的 https://blog.csdn.net/yichigo/article/details/23459613
 
     /* I cannot find whether a statically initialized mutex must be unlocked
      * before it gets out of scope or not, but let's choose a safer way. */

@@ -635,7 +635,7 @@ rebuild_leader_status_check(struct ds_pool *pool, uint32_t map_ver, uint32_t op,
 			break;
 		}
 
-		now = ABT_get_wtime();
+		now = ABT_get_wtime();  // 绝对时间, 单位: 秒
 		/* print something at least for each 10 secons */
 		if (now - last_print > 10) {
 			last_print = now;

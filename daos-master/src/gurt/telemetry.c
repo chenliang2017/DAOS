@@ -1104,7 +1104,7 @@ d_tm_print_metadata(char *desc, char *units, int format, FILE *stream)
  * Prints a single \a node.
  * Used as a convenience function to demonstrate usage for the client
  *
- * \param[in]	ctx		Client context
+ * \param[in]	ctx			Client context
  * \param[in]	node		Pointer to a parent or child node
  * \param[in]	level		Indicates level of indentation when printing
  *				this \a node

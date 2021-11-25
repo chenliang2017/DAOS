@@ -18,7 +18,7 @@ void ABTD_time_init(void)
 }
 
 /* Obtain the time value */
-void ABTD_time_get(ABTD_time *p_time)
+void ABTD_time_get(ABTD_time *p_time)  // 绝对时间, 定义了宏ABT_CONFIG_USE_CLOCK_GETTIME, 所以使用的是clock_gettime
 {
 #if defined(ABT_CONFIG_USE_CLOCK_GETTIME)
     int ret = clock_gettime(CLOCK_REALTIME, p_time);
@@ -32,11 +32,11 @@ void ABTD_time_get(ABTD_time *p_time)
 }
 
 /* Read the time value as seconds (double precision) */
-double ABTD_time_read_sec(ABTD_time *p_time)
+double ABTD_time_read_sec(ABTD_time *p_time)  // 返回秒数
 {
     double secs;
 
-#if defined(ABT_CONFIG_USE_CLOCK_GETTIME)
+#if defined(ABT_CONFIG_USE_CLOCK_GETTIME)  // 走此分析, ABT_CONFIG_USE_CLOCK_GETTIME宏定义了
     secs = ((double)p_time->tv_sec) + 1.0e-9 * ((double)p_time->tv_nsec);
 #elif defined(ABT_CONFIG_USE_MACH_ABSOLUTE_TIME)
     if (g_time_mult == 0.0)

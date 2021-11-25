@@ -25,7 +25,7 @@ ABTU_ret_err static int timer_alloc(ABTI_timer **pp_newtimer);
  *
  * @return Elapsed wall clock time in seconds
  */
-double ABT_get_wtime(void)
+double ABT_get_wtime(void)  // 绝对时间, 1970-01-01 00:00:00距今的秒数
 {
     return ABTI_get_wtime();
 }
@@ -177,7 +177,7 @@ int ABT_timer_free(ABT_timer *timer)
  * @param[in] timer  timer handle
  * @return Error code
  */
-int ABT_timer_start(ABT_timer timer)
+int ABT_timer_start(ABT_timer timer)  // 启动定时器
 {
     ABTI_timer *p_timer = ABTI_timer_get_ptr(timer);
     ABTI_CHECK_NULL_TIMER_PTR(p_timer);
@@ -206,7 +206,7 @@ int ABT_timer_start(ABT_timer timer)
  * @param[in] timer  timer handle
  * @return Error code
  */
-int ABT_timer_stop(ABT_timer timer)
+int ABT_timer_stop(ABT_timer timer)  // 停止定时器
 {
     ABTI_timer *p_timer = ABTI_timer_get_ptr(timer);
     ABTI_CHECK_NULL_TIMER_PTR(p_timer);
@@ -240,7 +240,7 @@ int ABT_timer_stop(ABT_timer timer)
  * @param[out] secs   elapsed time in seconds
  * @return Error code
  */
-int ABT_timer_read(ABT_timer timer, double *secs)
+int ABT_timer_read(ABT_timer timer, double *secs)  // 定时器经过的秒数
 {
     ABTI_UB_ASSERT(secs);
 
@@ -280,7 +280,7 @@ int ABT_timer_read(ABT_timer timer, double *secs)
  * @param[out] secs   elapsed time in seconds
  * @return Error code
  */
-int ABT_timer_stop_and_read(ABT_timer timer, double *secs)
+int ABT_timer_stop_and_read(ABT_timer timer, double *secs)  // 停定时器并获取定时器经过的秒数
 {
     ABTI_UB_ASSERT(secs);
 
@@ -321,7 +321,7 @@ int ABT_timer_stop_and_read(ABT_timer timer, double *secs)
  * @param[in,out] secs   accumulated elapsed time in seconds
  * @return Error code
  */
-int ABT_timer_stop_and_add(ABT_timer timer, double *secs)
+int ABT_timer_stop_and_add(ABT_timer timer, double *secs)  // 停定时器并将定时器经过的时间累加到secs上
 {
     ABTI_UB_ASSERT(secs);
 
@@ -364,7 +364,7 @@ int ABT_timer_stop_and_add(ABT_timer timer, double *secs)
  * @param[out] overhead  overhead time of \c ABT_timer
  * @return Error code
  */
-int ABT_timer_get_overhead(double *overhead)
+int ABT_timer_get_overhead(double *overhead)  // 定时器启停的时间消耗
 {
     ABTI_UB_ASSERT(overhead);
 

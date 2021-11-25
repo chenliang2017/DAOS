@@ -324,6 +324,11 @@ enum {
 	CRT_IV_RPCS_LIST
 };
 
+/* Opcode registered in crt will be
+ * client/server | mod_id | rpc_version | op_code
+ *    {1 bit}	  {7 bits}    {8 bits}    {16 bits}
+ */
+
 #define CRT_OPC_SWIM_BASE	0xFE000000UL
 
 #undef X

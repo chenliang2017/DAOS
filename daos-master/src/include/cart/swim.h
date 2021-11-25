@@ -25,10 +25,10 @@ extern "C" {
 typedef uint64_t swim_id_t;
 
 enum swim_member_status {
-	SWIM_MEMBER_ALIVE = 0,
-	SWIM_MEMBER_SUSPECT,
-	SWIM_MEMBER_DEAD,
-	SWIM_MEMBER_INACTIVE
+	SWIM_MEMBER_ALIVE = 0,  // 正常
+	SWIM_MEMBER_SUSPECT,    // 可疑
+	SWIM_MEMBER_DEAD,       // 异常
+	SWIM_MEMBER_INACTIVE    // 未激活
 };
 
 /** This chars should represent values of enum swim_member_status to print */
@@ -36,10 +36,9 @@ enum swim_member_status {
 
 /** SWIM state associated with each group member */
 struct swim_member_state {
-	uint64_t		 sms_incarnation; /**< incarnation number */
-	enum swim_member_status	 sms_status;	  /**< status of member */
-	uint32_t		 sms_delay;	  /**< SWIM message transfer
-						       network duration */
+	uint64_t		 sms_incarnation; 			/**< incarnation number, 看起来是个增量的东西, 用来保证提交的有效性监测 */  
+	enum swim_member_status	 sms_status;	  	/**< status of member */
+	uint32_t		 sms_delay;	  				/**< SWIM message transfer network duration, 网络传输时延，算了所有节点 */
 };
 
 struct swim_member_update {

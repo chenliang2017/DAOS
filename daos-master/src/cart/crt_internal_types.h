@@ -64,16 +64,16 @@ struct crt_prov_gdata {
 // CART进程内部全局数据结构
 struct crt_gdata {
 	/** Provider initialized at crt_init() time */
-	int			cg_init_prov;
+	int			cg_init_prov;			// CRT_NA_OFI_SOCKETS
 
 	/** Provider specific data */
 	struct crt_prov_gdata	cg_prov_gdata[CRT_NA_OFI_COUNT];
 
 	/** global timeout value (second) for all RPCs */
-	uint32_t		cg_timeout;
+	uint32_t		cg_timeout;         // 当前值为60秒
 
 	/** global swim index for all servers */
-	int32_t			cg_swim_crt_idx;
+	int32_t			cg_swim_crt_idx;	// 当前值为1(CRT_DEFAULT_PROGRESS_CTX_IDX)
 
 	/** credits limitation for #inflight RPCs per target EP CTX */
 	uint32_t		cg_credit_ep_ctx;
@@ -94,7 +94,7 @@ struct crt_gdata {
 				cg_swim_inited		: 1,
 				cg_auto_swim_disable	: 1,
 				/** whether it is a client or server */
-				cg_server		: 1,
+				cg_server		: 1,  // 服务还是客户端
 				/** whether scalable endpoint is enabled */
 				cg_use_sensors		: 1;
 
@@ -129,8 +129,8 @@ struct crt_timeout_cb_priv {
 };
 
 struct crt_event_cb_priv {
-	crt_event_cb		 cecp_func;
-	void			*cecp_args;
+	crt_event_cb		 cecp_func;  // 回调函数
+	void				*cecp_args;  // 参数
 };
 
 /* TODO may use a RPC to query server-side context number */
@@ -145,24 +145,24 @@ struct crt_event_cb_priv {
 /* structure of global fault tolerance data */
 struct crt_plugin_gdata {
 	/* list of progress callbacks */
-	size_t				 cpg_prog_size[CRT_SRV_CONTEXT_NUM];
+	size_t				 		cpg_prog_size[CRT_SRV_CONTEXT_NUM];
 	struct crt_prog_cb_priv		*cpg_prog_cbs[CRT_SRV_CONTEXT_NUM];
 	struct crt_prog_cb_priv		*cpg_prog_cbs_old[CRT_SRV_CONTEXT_NUM];
 	/* list of rpc timeout callbacks */
-	size_t				 cpg_timeout_size;
+	size_t				 		cpg_timeout_size;
 	struct crt_timeout_cb_priv	*cpg_timeout_cbs;
 	struct crt_timeout_cb_priv	*cpg_timeout_cbs_old;
 	/* list of event notification callbacks */
-	size_t				 cpg_event_size;
-	struct crt_event_cb_priv	*cpg_event_cbs;
+	size_t				 		cpg_event_size;   // 当前存储时间回调的空间大小(允许放几个事件回调函数)
+	struct crt_event_cb_priv	*cpg_event_cbs;   // 
 	struct crt_event_cb_priv	*cpg_event_cbs_old;
-	uint32_t			 cpg_inited:1;
+	uint32_t					 cpg_inited:1;
 	/* hlc error event callback */
-	crt_hlc_error_cb		 hlc_error_cb;
-	void				*hlc_error_cb_arg;
+	crt_hlc_error_cb		 	hlc_error_cb;
+	void						*hlc_error_cb_arg;
 
 	/* mutex to protect all callbacks change only */
-	pthread_mutex_t			 cpg_mutex;
+	pthread_mutex_t			 	cpg_mutex;
 };
 
 extern struct crt_plugin_gdata		crt_plugin_gdata;

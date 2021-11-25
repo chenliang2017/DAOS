@@ -157,9 +157,11 @@ dss_module_init_one(struct loaded_mod *lmod, uint64_t *mod_facs)
 	}
 
 	if (smod->sm_key != NULL)
-		dss_register_key(smod->sm_key);
+		dss_register_key(smod->sm_key);  // 注册各个模块的key
 
 	/* register RPC handlers */
+	// cart工具集注册
+	// 将smod的相关参数赋值到crt_gdata.cg_opc_map.com_map.L2_map.L3_map;
 	rc = daos_rpc_register(smod->sm_proto_fmt, smod->sm_cli_count,
 			       smod->sm_handlers, smod->sm_mod_id);
 	if (rc) {
@@ -169,6 +171,7 @@ dss_module_init_one(struct loaded_mod *lmod, uint64_t *mod_facs)
 	}
 
 	/* register dRPC handlers */
+	// drpc只有mgmt模块注册了该功能
 	rc = drpc_hdlr_register_all(smod->sm_drpc_handlers);
 	if (rc) {
 		D_ERROR("failed to register dRPC for %s: "DF_RC"\n",

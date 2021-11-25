@@ -16,9 +16,9 @@ static const char *SWIM_STATUS_STR[] = {
 	[SWIM_MEMBER_INACTIVE]	= "INACTIVE",
 };
 
-static uint64_t swim_prot_period_len;
-static uint64_t swim_suspect_timeout;
-static uint64_t swim_ping_timeout;
+static uint64_t swim_prot_period_len;  // 1s
+static uint64_t swim_suspect_timeout;  // 8s
+static uint64_t swim_ping_timeout;     // 900ms
 
 static inline uint64_t
 swim_prot_period_len_default(void)
@@ -70,7 +70,7 @@ swim_suspect_timeout_set(uint64_t val)
 uint64_t
 swim_suspect_timeout_get(void)
 {
-	return swim_suspect_timeout;
+	return swim_suspect_timeout;  // 8s
 }
 
 void
@@ -133,10 +133,10 @@ swim_updates_prepare(struct swim_context *ctx, swim_id_t id, swim_id_t to,
 		D_GOTO(out, rc = -DER_INVAL);
 	}
 
-	nupds = SWIM_PIGGYBACK_ENTRIES + 1 /* id */;
+	nupds = SWIM_PIGGYBACK_ENTRIES + 1 /* id */;  // 8个辅助 + 一个目标
 	if (id != self_id)
-		nupds++; /* self_id */
-	if (id != to)
+		nupds++; /* self_id */  // 再加上自己
+	if (id != to) 				// 再加上发送的节点
 		nupds++; /* to */
 
 	D_ALLOC_ARRAY(upds, nupds);
@@ -145,7 +145,8 @@ swim_updates_prepare(struct swim_context *ctx, swim_id_t id, swim_id_t to,
 
 	swim_ctx_lock(ctx);
 
-	rc = ctx->sc_ops->get_member_state(ctx, id, &upds[n].smu_state);
+    // 第一个槽位填写待查询rank的状态
+	rc = ctx->sc_ops->get_member_state(ctx, id, &upds[n].smu_state);  // 获取状态
 	if (rc) {
 		if (rc == -DER_NONEXIST)
 			SWIM_INFO("%lu: not bootstrapped yet with %lu\n", self_id, id);
@@ -155,6 +156,7 @@ swim_updates_prepare(struct swim_context *ctx, swim_id_t id, swim_id_t to,
 	}
 	upds[n++].smu_id = id;
 
+    // 第二个槽位填本节点的状态
 	if (id != self_id) {
 		/* update self status on target */
 		rc = ctx->sc_ops->get_member_state(ctx, self_id,
@@ -167,6 +169,7 @@ swim_updates_prepare(struct swim_context *ctx, swim_id_t id, swim_id_t to,
 		upds[n++].smu_id = self_id;
 	}
 
+    // 第三个槽位填要发往的rank的信息
 	if (id != to) {
 		rc = ctx->sc_ops->get_member_state(ctx, to, &upds[n].smu_state);
 		if (rc) {
@@ -179,6 +182,7 @@ swim_updates_prepare(struct swim_context *ctx, swim_id_t id, swim_id_t to,
 		upds[n++].smu_id = to;
 	}
 
+    // 遍历查询所有的sc_updates中的成员
 	item = TAILQ_FIRST(&ctx->sc_updates);
 	while (item != NULL) {
 		next = TAILQ_NEXT(item, si_link);
@@ -192,6 +196,7 @@ swim_updates_prepare(struct swim_context *ctx, swim_id_t id, swim_id_t to,
 		}
 
 		/* update with recent updates */
+		// 获取不相关的rank的信息
 		if (item->si_id != id &&
 		    item->si_id != self_id &&
 		    item->si_id != to) {
@@ -240,14 +245,14 @@ int
 swim_updates_send(struct swim_context *ctx, swim_id_t id, swim_id_t to)
 {
 	struct swim_member_update	*upds;
-	size_t				 nupds;
+	size_t				         nupds;  // upds数组的大小
 	int				 rc;
 
 	rc = swim_updates_prepare(ctx, id, to, &upds, &nupds);
 	if (rc)
 		goto out;
 
-	rc = ctx->sc_ops->send_request(ctx, id, to, upds, nupds);
+	rc = ctx->sc_ops->send_request(ctx, id, to, upds, nupds);  // 发送
 	if (rc)
 		D_FREE(upds);
 out:
@@ -261,6 +266,7 @@ swim_updates_notify(struct swim_context *ctx, swim_id_t from, swim_id_t id,
 	struct swim_item *item;
 
 	/* determine if this member already have an update */
+	// 已经有了, 有就更新信息
 	TAILQ_FOREACH(item, &ctx->sc_updates, si_link) {
 		if (item->si_id == id) {
 			item->si_from = from;
@@ -277,22 +283,22 @@ swim_updates_notify(struct swim_context *ctx, swim_id_t from, swim_id_t id,
 		item->si_id   = id;
 		item->si_from = from;
 		item->u.si_count = count;
-		TAILQ_INSERT_HEAD(&ctx->sc_updates, item, si_link);
+		TAILQ_INSERT_HEAD(&ctx->sc_updates, item, si_link);   // 新增插入sc_updates
 	}
 update:
-	return ctx->sc_ops->set_member_state(ctx, id, id_state);
+	return ctx->sc_ops->set_member_state(ctx, id, id_state);  // 设置id的状态信息
 }
 
 static int
-swim_member_alive(struct swim_context *ctx, swim_id_t from,
-		  swim_id_t id, uint64_t nr)
+swim_member_alive(struct swim_context *ctx, swim_id_t from/*认为id没问题的rank*/,
+		  swim_id_t id/*待标记alive的rank的id*/, uint64_t nr)
 {
 	struct swim_member_state	 id_state;
 	struct swim_item		*item;
 	uint64_t			 count = 0;
 	int				 rc;
 
-	rc = ctx->sc_ops->get_member_state(ctx, id, &id_state);
+	rc = ctx->sc_ops->get_member_state(ctx, id, &id_state);  // 获取状态
 	if (rc) {
 		swim_id_t self_id = swim_self_get(ctx);
 
@@ -320,7 +326,7 @@ swim_member_alive(struct swim_context *ctx, swim_id_t from,
 
 update:
 	/* if member is suspected, remove from suspect list */
-	TAILQ_FOREACH(item, &ctx->sc_suspects, si_link) {
+	TAILQ_FOREACH(item, &ctx->sc_suspects, si_link) {  // 从suspect队列删除
 		if (item->si_id == id) {
 			/* remove this member from suspect list */
 			TAILQ_REMOVE(&ctx->sc_suspects, item, si_link);
@@ -329,6 +335,7 @@ update:
 		}
 	}
 
+    // 更新状态
 	id_state.sms_incarnation = nr;
 	id_state.sms_status = SWIM_MEMBER_ALIVE;
 	rc = swim_updates_notify(ctx, from, id, &id_state, count);
@@ -344,7 +351,7 @@ swim_member_dead(struct swim_context *ctx, swim_id_t from,
 	struct swim_item		*item;
 	int				 rc;
 
-	rc = ctx->sc_ops->get_member_state(ctx, id, &id_state);
+	rc = ctx->sc_ops->get_member_state(ctx, id, &id_state);  // 获取待标dead的rank的状态信息
 	if (rc) {
 		SWIM_ERROR("get_member_state(%lu): "DF_RC"\n", id, DP_RC(rc));
 		D_GOTO(out, rc);
@@ -361,12 +368,13 @@ swim_member_dead(struct swim_context *ctx, swim_id_t from,
 		D_GOTO(update, rc = 0);
 
 	/* ignore old updates or updates for dead members */
-	if (id_state.sms_status == SWIM_MEMBER_DEAD ||
-	    id_state.sms_incarnation > nr)
+	if (id_state.sms_status == SWIM_MEMBER_DEAD ||  // 已经dead了
+	    id_state.sms_incarnation > nr)  // 本次的更新请求已经老旧了
 		D_GOTO(out, rc = -DER_ALREADY);
 
 update:
 	/* if member is suspected, remove it from suspect list */
+	// 从suspect队列中移除
 	TAILQ_FOREACH(item, &ctx->sc_suspects, si_link) {
 		if (item->si_id == id) {
 			/* remove this member from suspect list */
@@ -378,15 +386,15 @@ update:
 
 	SWIM_ERROR("member %lu is DEAD\n", id);
 	id_state.sms_incarnation = nr;
-	id_state.sms_status = SWIM_MEMBER_DEAD;
-	rc = swim_updates_notify(ctx, from, id, &id_state, 0);
+	id_state.sms_status = SWIM_MEMBER_DEAD;  // 标记dead
+	rc = swim_updates_notify(ctx, from, id, &id_state, 0);  // 更新状态
 out:
 	return rc;
 }
 
 static int
-swim_member_suspect(struct swim_context *ctx, swim_id_t from,
-		    swim_id_t id, uint64_t nr)
+swim_member_suspect(struct swim_context *ctx, swim_id_t from/*发起者, 认为id的rank有异常*/,
+		    swim_id_t id/*被认为有异常的rank*/, uint64_t nr)
 {
 	struct swim_member_state	 id_state;
 	struct swim_item		*item;
@@ -394,15 +402,15 @@ swim_member_suspect(struct swim_context *ctx, swim_id_t from,
 
 	/* if there is no suspicion timeout, just kill the member */
 	if (swim_suspect_timeout_get() == 0)
-		return swim_member_dead(ctx, from, id, nr);
+		return swim_member_dead(ctx, from, id, nr);  // 如果没有可疑对象的超时监测机制, 直接标记为dead
 
-	rc = ctx->sc_ops->get_member_state(ctx, id, &id_state);
+	rc = ctx->sc_ops->get_member_state(ctx, id, &id_state);  // 获取可疑rank的状态信息
 	if (rc) {
 		SWIM_ERROR("get_member_state(%lu): "DF_RC"\n", id, DP_RC(rc));
 		D_GOTO(out, rc);
 	}
 
-	if (id_state.sms_status == SWIM_MEMBER_INACTIVE)
+	if (id_state.sms_status == SWIM_MEMBER_INACTIVE)  // 未激活
 		D_GOTO(out, rc = 0);
 
 	if (nr > id_state.sms_incarnation)
@@ -416,10 +424,12 @@ swim_member_suspect(struct swim_context *ctx, swim_id_t from,
 
 search:
 	/* determine if this member is already suspected */
-	TAILQ_FOREACH(item, &ctx->sc_suspects, si_link) {
+	TAILQ_FOREACH(item, &ctx->sc_suspects, si_link) {  // 可疑链表中能找到这个id的rank
 		if (item->si_id == id)
-			goto update;
+			goto update;  // 直接更新
 	}
+
+    // 未找到, 插入
 
 	/* add to end of suspect list */
 	D_ALLOC_PTR(item);
@@ -428,7 +438,7 @@ search:
 	item->si_id   = id;
 	item->si_from = from;
 	item->u.si_deadline = swim_now_ms() + swim_suspect_timeout_get();
-	TAILQ_INSERT_TAIL(&ctx->sc_suspects, item, si_link);
+	TAILQ_INSERT_TAIL(&ctx->sc_suspects, item, si_link);  // 插入suspect链表
 
 update:
 	id_state.sms_incarnation = nr;
@@ -439,8 +449,8 @@ out:
 }
 
 static int
-swim_member_update_suspected(struct swim_context *ctx, uint64_t now,
-			     uint64_t net_glitch_delay)
+swim_member_update_suspected(struct swim_context *ctx, uint64_t now/*当前时间*/,
+			     uint64_t net_glitch_delay/*时间漂移(距离本次预期执行时间的偏移)*/)
 {
 	TAILQ_HEAD(, swim_item)		 targets;
 	struct swim_member_state	 id_state;
@@ -449,19 +459,19 @@ swim_member_update_suspected(struct swim_context *ctx, uint64_t now,
 	swim_id_t			 from_id, id;
 	int				 rc = 0;
 
-	TAILQ_INIT(&targets);
+	TAILQ_INIT(&targets);  // 形成环状链表
 
 	/* update status of suspected members */
 	swim_ctx_lock(ctx);
-	item = TAILQ_FIRST(&ctx->sc_suspects);
+	item = TAILQ_FIRST(&ctx->sc_suspects);  // sc_suspects链表的第一个元素
 	while (item != NULL) {
-		next = TAILQ_NEXT(item, si_link);
-		item->u.si_deadline += net_glitch_delay;
-		if (now > item->u.si_deadline) {
+		next = TAILQ_NEXT(item, si_link);   // sc_suspects链表中下一个元素的指针
+		item->u.si_deadline += net_glitch_delay;  // 由于调度有漂移, deadline也向后移动
+		if (now > item->u.si_deadline) {    // 当前时间比deadline要大, 表示deadline已经超期了
 			rc = ctx->sc_ops->get_member_state(ctx,
 							   item->si_id,
-							   &id_state);
-			if (rc || (id_state.sms_status != SWIM_MEMBER_SUSPECT)) {
+							   &id_state);  // 获取rank的状态
+			if (rc || (id_state.sms_status != SWIM_MEMBER_SUSPECT)) {  // 已经不在suspect列表
 				/* this member was removed or updated already */
 				TAILQ_REMOVE(&ctx->sc_suspects, item, si_link);
 				D_FREE(item);
@@ -470,7 +480,7 @@ swim_member_update_suspected(struct swim_context *ctx, uint64_t now,
 
 			SWIM_INFO("%lu: suspect timeout %lu\n",
 				  self_id, item->si_id);
-			if (item->si_from != self_id) {
+			if (item->si_from != self_id) {		// 不是本节点首先发现的, 构造item加到targets中，下面会将targets中的东西发出去
 				/* let's try to confirm from gossip origin */
 				id      = item->si_id;
 				from_id = item->si_from;
@@ -484,7 +494,7 @@ swim_member_update_suspected(struct swim_context *ctx, uint64_t now,
 				item->si_id   = id;
 				item->si_from = from_id;
 				TAILQ_INSERT_TAIL(&targets, item, si_link);
-			} else {
+			} else {							// 本节点首先发现的，从suspect队列中删掉, 加到dead队列中
 				TAILQ_REMOVE(&ctx->sc_suspects, item, si_link);
 				/* if this member has exceeded
 				 * its allowable suspicion timeout,
@@ -492,12 +502,12 @@ swim_member_update_suspected(struct swim_context *ctx, uint64_t now,
 				 */
 				swim_member_dead(ctx, item->si_from,
 						 item->si_id,
-						 id_state.sms_incarnation);
+						 id_state.sms_incarnation);  // 标记dead
 				D_FREE(item);
 			}
-		} else {
-			if (item->u.si_deadline < ctx->sc_next_event)
-				ctx->sc_next_event = item->u.si_deadline;
+		} else {  // dealine在未来超时
+			if (item->u.si_deadline < ctx->sc_next_event)  // deadline在下次执行前超时
+				ctx->sc_next_event = item->u.si_deadline;  // 将下一次的执行时间设置为daedline时间
 		}
 next_item:
 		item = next;
@@ -512,8 +522,8 @@ next_item:
 		SWIM_INFO("try to confirm from source. %lu: %lu <= %lu\n",
 			  self_id, item->si_id, item->si_from);
 
-		rc = swim_updates_send(ctx, item->si_id, item->si_from);
-		if (rc)
+		rc = swim_updates_send(ctx, item->si_id, item->si_from);  // si_id的问题不是本节点先发现的，是si_from先发现的
+		if (rc)                                                   // 告知si_from
 			SWIM_ERROR("swim_updates_send(): "DF_RC"\n", DP_RC(rc));
 
 		D_FREE(item);
@@ -534,13 +544,14 @@ swim_ipings_update(struct swim_context *ctx, uint64_t now,
 
 	TAILQ_INIT(&targets);
 
+    // 遍历所有iping的成员, 判断是否超时, 超时的话就加入target队列中
 	swim_ctx_lock(ctx);
 	item = TAILQ_FIRST(&ctx->sc_ipings);
 	while (item != NULL) {
 		next = TAILQ_NEXT(item, si_link);
-		item->u.si_deadline += net_glitch_delay;
+		item->u.si_deadline += net_glitch_delay;  // deadline + 时间漂移
 		if (now > item->u.si_deadline) {
-			TAILQ_REMOVE(&ctx->sc_ipings, item, si_link);
+			TAILQ_REMOVE(&ctx->sc_ipings, item, si_link);  // 从iping链表中移除
 			TAILQ_INSERT_TAIL(&targets, item, si_link);
 		} else {
 			if (item->u.si_deadline < ctx->sc_next_event)
@@ -551,6 +562,7 @@ swim_ipings_update(struct swim_context *ctx, uint64_t now,
 	swim_ctx_unlock(ctx);
 
 	/* send notification to expired members */
+	// 向过期的iping相关rank发送消息
 	item = TAILQ_FIRST(&targets);
 	while (item != NULL) {
 		next = TAILQ_NEXT(item, si_link);
@@ -727,11 +739,11 @@ swim_init(swim_id_t self_id, struct swim_ops *swim_ops, void *data)
 	}
 
 	/* allocate structure for storing swim context */
-	D_ALLOC_PTR(ctx);
+	D_ALLOC_PTR(ctx);  // 申请空间
 	if (ctx == NULL)
 		D_GOTO(out, ctx = NULL);
 
-	rc = SWIM_MUTEX_CREATE(ctx->sc_mutex, NULL);
+	rc = SWIM_MUTEX_CREATE(ctx->sc_mutex, NULL);  // 锁初始化
 	if (rc != 0) {
 		D_FREE(ctx);
 		D_DEBUG(DB_TRACE, "SWIM_MUTEX_CREATE(): %s\n", strerror(rc));
@@ -815,6 +827,7 @@ swim_fini(struct swim_context *ctx)
 	D_FREE(ctx);
 }
 
+// 根据网络时延将dealine做释放迁移
 int
 swim_net_glitch_update(struct swim_context *ctx, swim_id_t id, uint64_t delay)
 {
@@ -827,7 +840,7 @@ swim_net_glitch_update(struct swim_context *ctx, swim_id_t id, uint64_t delay)
 	/* update expire time of suspected members */
 	TAILQ_FOREACH(item, &ctx->sc_suspects, si_link) {
 		if (id == self_id || id == item->si_id)
-			item->u.si_deadline += delay;
+			item->u.si_deadline += delay;  // 超时时间加上网络时延
 	}
 	/* update expire time of ipinged members */
 	TAILQ_FOREACH(item, &ctx->sc_ipings, si_link) {
@@ -849,7 +862,7 @@ swim_net_glitch_update(struct swim_context *ctx, swim_id_t id, uint64_t delay)
 }
 
 int
-swim_progress(struct swim_context *ctx, int64_t timeout)
+swim_progress(struct swim_context *ctx, int64_t timeout/*值为1000*/)
 {
 	enum swim_context_state	 ctx_state = SCS_TIMEDOUT;
 	struct swim_member_state target_state;
@@ -869,26 +882,28 @@ swim_progress(struct swim_context *ctx, int64_t timeout)
 	if (ctx->sc_self == SWIM_ID_INVALID) /* not initialized yet */
 		D_GOTO(out_err, rc = 0); /* Ignore this update */
 
-	now = swim_now_ms();
-	if (timeout > 0)
-		end = now + timeout;
-	ctx->sc_next_event = now + swim_period_get() / 3;
+	now = swim_now_ms();  // 相对时间
+	if (timeout > 0)  // 
+		end = now + timeout;  // 当前时间 + 1000ms, 这里有问题的
+	ctx->sc_next_event = now + swim_period_get() / 3;  // swim处理下次执行的时间, 外部用这个时间来做网络上的超时等待
 
 	if (now > ctx->sc_expect_progress_time &&
 	    0  != ctx->sc_expect_progress_time) {
-		net_glitch_delay = now - ctx->sc_expect_progress_time;
+		net_glitch_delay = now - ctx->sc_expect_progress_time;  // 这个应该是微调时间的吧？
 		SWIM_ERROR("The progress callback was not called for too long: "
-			   "%lu ms after expected.\n", net_glitch_delay);
+			   "%lu ms after expected.\n", net_glitch_delay);  // 表示本次执行比期望晚了多久
 	}
 
 	for (; now <= end || ctx_state == SCS_TIMEDOUT; now = swim_now_ms()) {
-		rc = swim_member_update_suspected(ctx, now, net_glitch_delay);
+		// suspect列表的处理: suspect超时判断
+		rc = swim_member_update_suspected(ctx, now, net_glitch_delay/*与期望执行时间的差值, 漂移的落后时间*/);
 		if (rc) {
 			SWIM_ERROR("swim_member_update_suspected(): "DF_RC"\n",
 				   DP_RC(rc));
 			D_GOTO(out, rc);
 		}
 
+        // 判断iping的rank是否过期, 过期的话向相关target发送消息
 		rc = swim_ipings_update(ctx, now, net_glitch_delay);
 		if (rc) {
 			SWIM_ERROR("swim_ipings_update(): "DF_RC"\n",
@@ -898,9 +913,9 @@ swim_progress(struct swim_context *ctx, int64_t timeout)
 
 		swim_ctx_lock(ctx);
 		ctx_state = SCS_SELECT;
-		if (ctx->sc_target != SWIM_ID_INVALID) {
+		if (ctx->sc_target != SWIM_ID_INVALID) {  // dping对象已知, 第一次时dping对象未知
 			rc = ctx->sc_ops->get_member_state(ctx, ctx->sc_target,
-							   &target_state);
+							   &target_state);    // 获取dping对象的swim状态信息
 			if (rc) {
 				ctx->sc_target = SWIM_ID_INVALID;
 				if (rc != -DER_NONEXIST) {
@@ -917,17 +932,18 @@ swim_progress(struct swim_context *ctx, int64_t timeout)
 
 		switch (ctx_state) {
 		case SCS_BEGIN:
-			if (now > ctx->sc_next_tick_time) {
-				if (TAILQ_EMPTY(&ctx->sc_subgroup)) {
+			if (now > ctx->sc_next_tick_time) {  // 当前时间比预期的下次执行时间大, 说明可以开始下一次执行了
+				if (TAILQ_EMPTY(&ctx->sc_subgroup)) {  // 远端rank集合不为空
 					uint64_t delay = target_state.sms_delay * 2;
 					uint64_t ping_timeout = swim_ping_timeout_get();
 
+					// 保证了delay在: 0.9 ~ 2.7
 					if (delay < ping_timeout ||
 					    delay > 3 * ping_timeout)
 						delay = ping_timeout;
 
-					target_id = ctx->sc_target;
-					sendto_id = ctx->sc_target;
+					target_id = ctx->sc_target;  // dping的rank
+					sendto_id = ctx->sc_target;  // dping的rank
 					send_updates = true;
 					SWIM_INFO("%lu: dping %lu => {%lu %c %lu} "
 						  "delay: %u ms, timeout: %lu ms\n",
@@ -946,23 +962,23 @@ swim_progress(struct swim_context *ctx, int64_t timeout)
 				}
 			} else {
 				if (ctx->sc_next_tick_time < ctx->sc_next_event)
-					ctx->sc_next_event = ctx->sc_next_tick_time;
-			}
+					ctx->sc_next_event = ctx->sc_next_tick_time;  // 期望的执行时间比下次跑进来的时间小, 调整下次跑进来的时间
+			}                                                     // 确保我们预期的执行周期可以满足
 			break;
 		case SCS_PINGED:
 			/* check whether the ping target from the previous
 			 * protocol tick ever successfully acked a direct
 			 * ping request
 			 */
-			ctx->sc_deadline += net_glitch_delay;
-			if (now > ctx->sc_deadline) {
+			ctx->sc_deadline += net_glitch_delay;  // 超时时间加上调度漂移
+			if (now > ctx->sc_deadline) {  // dping已经超时了
 				/* no response from direct ping */
-				if (target_state.sms_status != SWIM_MEMBER_INACTIVE) {
+				if (target_state.sms_status != SWIM_MEMBER_INACTIVE) {  // dping对象状态不为: 未激活
 					/* suspect this member */
 					swim_member_suspect(ctx, ctx->sc_self,
 							    ctx->sc_target,
-						  target_state.sms_incarnation);
-					ctx_state = SCS_TIMEDOUT;
+						  target_state.sms_incarnation);  // 标记可疑
+					ctx_state = SCS_TIMEDOUT;  // 状态切换到超时
 				} else {
 					/* just goto next member,
 					 * this is not ready yet.
@@ -971,8 +987,8 @@ swim_progress(struct swim_context *ctx, int64_t timeout)
 				}
 				ctx->sc_next_event = now;
 			} else {
-				if (ctx->sc_deadline < ctx->sc_next_event)
-					ctx->sc_next_event = ctx->sc_deadline;
+				if (ctx->sc_deadline < ctx->sc_next_event)  // 上次的dping还未超时
+					ctx->sc_next_event = ctx->sc_deadline;  // 下次执行时间设置为dping的超时时间
 			}
 			break;
 		case SCS_TIMEDOUT:
@@ -980,7 +996,7 @@ swim_progress(struct swim_context *ctx, int64_t timeout)
 			 * kick off a set of indirect pings to a subgroup of
 			 * group members
 			 */
-			item = TAILQ_FIRST(&ctx->sc_subgroup);
+			item = TAILQ_FIRST(&ctx->sc_subgroup);  // 找iping的rank
 			if (item == NULL) {
 				rc = swim_subgroup_init(ctx);
 				if (rc) {
@@ -992,11 +1008,12 @@ swim_progress(struct swim_context *ctx, int64_t timeout)
 				item = TAILQ_FIRST(&ctx->sc_subgroup);
 			}
 
+            // 存在远端的rank
 			if (item != NULL) {
 				struct swim_member_state state;
 
-				target_id = item->si_from;
-				sendto_id = item->si_id;
+				target_id = item->si_from;  // 代ping的对象
+				sendto_id = item->si_id;    // 远端的rank，由远端的rank取pingsi_from
 				TAILQ_REMOVE(&ctx->sc_subgroup, item, si_link);
 				D_FREE(item);
 
@@ -1041,7 +1058,7 @@ done_item:
 			}
 			/* fall through to select a next target */
 		case SCS_SELECT:
-			ctx->sc_target = ctx->sc_ops->get_dping_target(ctx);
+			ctx->sc_target = ctx->sc_ops->get_dping_target(ctx);  // 找到一个非自己非dead的rank的id, 作为dping的对象
 			if (ctx->sc_target == SWIM_ID_INVALID) {
 				swim_ctx_unlock(ctx);
 				D_GOTO(out, rc = -DER_SHUTDOWN);
@@ -1054,7 +1071,7 @@ done_item:
 		}
 
 		net_glitch_delay = 0UL;
-		swim_state_set(ctx, ctx_state);
+		swim_state_set(ctx, ctx_state);  // 保存状态
 		swim_ctx_unlock(ctx);
 
 		if (send_updates) {
@@ -1071,7 +1088,7 @@ done_item:
 	}
 	rc = (now > end) ? -DER_TIMEDOUT : -DER_CANCELED;
 out:
-	ctx->sc_expect_progress_time = now + swim_period_get() / 2;
+	ctx->sc_expect_progress_time = now + swim_period_get() / 2;  // 期望的下次执行时间
 out_err:
 	return rc;
 }
@@ -1118,13 +1135,13 @@ swim_updates_parse(struct swim_context *ctx, swim_id_t from_id,
 			break;
 		case SWIM_MEMBER_SUSPECT:
 		case SWIM_MEMBER_DEAD:
-			if (id == self_id) {
+			if (id == self_id) {  // 远端标记我的状态
 				/* increment our incarnation number if we are
 				 * suspected/confirmed in the current
 				 * incarnation
 				 */
 				rc = ctx->sc_ops->get_member_state(ctx, self_id,
-								   &self_state);
+								   &self_state);  // 获取自己状态
 				if (rc) {
 					swim_ctx_unlock(ctx);
 					SWIM_ERROR("get_member_state(%lu): "
@@ -1165,10 +1182,10 @@ swim_updates_parse(struct swim_context *ctx, swim_id_t from_id,
 
 			if (upds[i].smu_state.sms_status == SWIM_MEMBER_SUSPECT)
 				swim_member_suspect(ctx, from_id, id,
-					     upds[i].smu_state.sms_incarnation);
+					     upds[i].smu_state.sms_incarnation);  // 标记suspect
 			else
 				swim_member_dead(ctx, from_id, id,
-					     upds[i].smu_state.sms_incarnation);
+					     upds[i].smu_state.sms_incarnation);  // 标记dead
 			break;
 		}
 	}

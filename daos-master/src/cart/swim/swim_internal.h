@@ -26,20 +26,20 @@
 #include <gurt/common.h>
 
 /* Use debug capability from CaRT */
-#define SWIM_INFO(fmt, ...)	D_DEBUG(DLOG_DBG, fmt, ##__VA_ARGS__)
+#define SWIM_INFO(fmt, ...)	    D_DEBUG(DLOG_DBG, fmt, ##__VA_ARGS__)
 #define SWIM_ERROR(fmt, ...)	D_DEBUG(DLOG_ERR, fmt, ##__VA_ARGS__)
 
 #ifdef _USE_ABT_SYNC_
-#define SWIM_MUTEX_T		ABT_mutex
+#define SWIM_MUTEX_T			ABT_mutex
 #define SWIM_MUTEX_CREATE(x, y)	ABT_mutex_create(&(x))
 #define SWIM_MUTEX_DESTROY(x)	ABT_mutex_destroy(&(x))
-#define SWIM_MUTEX_LOCK(x)	ABT_mutex_lock(x)
+#define SWIM_MUTEX_LOCK(x)		ABT_mutex_lock(x)
 #define SWIM_MUTEX_UNLOCK(x)	ABT_mutex_unlock(x)
 #else  /* _USE_ABT_SYNC_ */
-#define SWIM_MUTEX_T		pthread_mutex_t
+#define SWIM_MUTEX_T			pthread_mutex_t
 #define SWIM_MUTEX_CREATE(x, y)	pthread_mutex_init(&(x), (y))
 #define SWIM_MUTEX_DESTROY(x)	pthread_mutex_destroy(&(x))
-#define SWIM_MUTEX_LOCK(x)	pthread_mutex_lock(&(x))
+#define SWIM_MUTEX_LOCK(x)		pthread_mutex_lock(&(x))
 #define SWIM_MUTEX_UNLOCK(x)	pthread_mutex_unlock(&(x))
 #endif /* _USE_ABT_SYNC_ */
 
@@ -48,9 +48,9 @@ extern "C" {
 #endif
 
 /** SWIM protocol parameter defaults */
-#define SWIM_PROTOCOL_PERIOD_LEN 1000	/* milliseconds */
-#define SWIM_SUSPECT_TIMEOUT	(8 * SWIM_PROTOCOL_PERIOD_LEN)
-#define SWIM_PING_TIMEOUT	900	/* milliseconds */
+#define SWIM_PROTOCOL_PERIOD_LEN 1000	/* milliseconds */			// 1s
+#define SWIM_SUSPECT_TIMEOUT	(8 * SWIM_PROTOCOL_PERIOD_LEN)		// 8s
+#define SWIM_PING_TIMEOUT	900	/* milliseconds */					// 900ms
 #define SWIM_SUBGROUP_SIZE	2
 #define SWIM_PIGGYBACK_ENTRIES	8	/**< count of piggybacked entries */
 #define SWIM_PIGGYBACK_TX_COUNT	50	/**< count of transfers each entry
@@ -72,9 +72,9 @@ enum swim_context_state {
 };
 
 struct swim_item {
-	TAILQ_ENTRY(swim_item)	 si_link;
-	swim_id_t		 si_id;
-	swim_id_t		 si_from;
+	TAILQ_ENTRY(swim_item)	 si_link;    // 用来串联整个链表的, 展开为结构体, 内涵两个指针：指向前一个和后一个
+	swim_id_t		 si_id;       		 // rank的id
+	swim_id_t		 si_from;     		 // 这个字段感觉是哪个rank最先发现这个si_id有问题, 就填哪个rank的id
 	void			*si_args;
 	union {
 		uint64_t	 si_deadline; /**< for sc_suspects/sc_ipings */
@@ -86,25 +86,25 @@ struct swim_item {
 struct swim_context {
 	SWIM_MUTEX_T		 sc_mutex;	/**< mutex for modifying */
 
-	void			*sc_data;	/**< private data */
-	struct swim_ops		*sc_ops;
+	void				*sc_data;	/**< private data */
+	struct swim_ops		*sc_ops;    // siwm支持的函数集
 
-	TAILQ_HEAD(, swim_item)	 sc_subgroup;
-	TAILQ_HEAD(, swim_item)	 sc_suspects;
-	TAILQ_HEAD(, swim_item)	 sc_updates;
-	TAILQ_HEAD(, swim_item)	 sc_ipings;
+	TAILQ_HEAD(, swim_item)	 sc_subgroup;  // 远端rank的集合
+	TAILQ_HEAD(, swim_item)	 sc_suspects;  // 可能出问题的rank集合, 链表形式维护
+	TAILQ_HEAD(, swim_item)	 sc_updates;   // 
+	TAILQ_HEAD(, swim_item)	 sc_ipings;    // iping的rank集合
 
 	enum swim_context_state	 sc_state;
-	swim_id_t		 sc_target;
+	swim_id_t		 sc_target;            // 本节点dping的rank的id
 	swim_id_t		 sc_self;
 
 	uint64_t		 sc_default_ping_timeout;
-	uint64_t		 sc_expect_progress_time;
-	uint64_t		 sc_next_tick_time;
-	uint64_t		 sc_next_event;
-	uint64_t		 sc_deadline;
+	uint64_t		 sc_expect_progress_time;   // 期望的执行时间? 这玩意是定时器吗？
+	uint64_t		 sc_next_tick_time;			// 下一次dping的时间(目前间隔1s执行dping一次), 这个是控制dping的周期的
+	uint64_t		 sc_next_event;				// swim处理下次执行的时间, 外部用这个时间来做网络上的超时等待, 这个是控制网络阻塞时间的, 用来确保下次swim_progress的时间
+	uint64_t		 sc_deadline;				// dping的超时时间, dping的延时允许在:0.9~2.7秒之间
 
-	uint64_t		 sc_piggyback_tx_max;
+	uint64_t		 sc_piggyback_tx_max;		//
 
 	unsigned int		 sc_glitch:1;
 };
@@ -139,7 +139,7 @@ swim_now_ms(void)
 	struct timespec now;
 	int rc;
 
-	rc = clock_gettime(CLOCK_MONOTONIC, &now);
+	rc = clock_gettime(CLOCK_MONOTONIC, &now);  // 相对时间
 
 	return rc ? 0 : now.tv_sec * 1000 + now.tv_nsec / 1000000;
 }

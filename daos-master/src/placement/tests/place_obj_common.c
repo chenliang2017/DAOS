@@ -552,8 +552,8 @@ gen_pool_and_placement_map(int num_domains, int nodes_per_domain,
 	int                      rc;
 
 	nr = num_domains + (nodes_per_domain * num_domains) +
-	     (num_domains * nodes_per_domain * vos_per_target);
-	D_ALLOC_ARRAY(comps, nr);
+	     (num_domains * nodes_per_domain * vos_per_target);  // pool_map中各级节点的总数
+	D_ALLOC_ARRAY(comps, nr);  // 申请内存空间, 存放map中所有的'节点', 线性的存储所有节点
 	D_ASSERT(comps != NULL);
 
 	comp = &comps[0];

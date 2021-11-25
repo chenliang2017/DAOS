@@ -173,14 +173,14 @@ out:
 }
 
 int
-crt_context_provider_create(crt_context_t *crt_ctx, int provider)
+crt_context_provider_create(crt_context_t *crt_ctx, int provider/*CRT_NA_OFI_SOCKETS*/)
 {
 	struct crt_context	*ctx = NULL;
-	int			rc = 0;
+	int				rc = 0;
 	na_size_t		uri_len = CRT_ADDR_STR_MAX_LEN;
 	bool			sep_mode;
-	int			cur_ctx_num;
-	int			max_ctx_num;
+	int				cur_ctx_num;
+	int				max_ctx_num;
 	d_list_t		*ctx_list;
 
 	if (crt_ctx == NULL) {
@@ -272,17 +272,18 @@ crt_context_provider_create(crt_context_t *crt_ctx, int provider)
 			       "\n", DP_RC(ret));
 	}
 
+    // swim相关
 	if (crt_is_service() &&
 	    crt_gdata.cg_auto_swim_disable == 0 &&
-	    ctx->cc_idx == crt_gdata.cg_swim_crt_idx) {
-		rc = crt_swim_init(crt_gdata.cg_swim_crt_idx);
+	    ctx->cc_idx == crt_gdata.cg_swim_crt_idx) {  // 进程启动的第二个线程才会启动swim操作, 确保只有一个线程处理swim
+		rc = crt_swim_init(crt_gdata.cg_swim_crt_idx/*CRT_DEFAULT_PROGRESS_CTX_IDX*/);
 		if (rc) {
 			D_ERROR("crt_swim_init() failed rc: %d.\n", rc);
 			crt_context_destroy(ctx, true);
 			D_GOTO(out, rc);
 		}
 
-		if (provider == CRT_NA_OFI_SOCKETS || provider == CRT_NA_OFI_TCP_RXM) {
+		if (provider == CRT_NA_OFI_SOCKETS || provider == CRT_NA_OFI_TCP_RXM) {  // CRT_NA_OFI_SOCKETS 成立
 			struct crt_grp_priv	*grp_priv = crt_gdata.cg_grp->gg_primary_grp;
 			struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;
 
@@ -307,7 +308,7 @@ out:
 int
 crt_context_create(crt_context_t *crt_ctx)
 {
-	return crt_context_provider_create(crt_ctx, crt_gdata.cg_init_prov);
+	return crt_context_provider_create(crt_ctx, crt_gdata.cg_init_prov/*CRT_NA_OFI_SOCKETS*/);
 }
 
 int
@@ -941,7 +942,7 @@ crt_context_timeout_check(struct crt_context *crt_ctx)
 		 * The max_delay should be less suspicion timeout to guarantee
 		 * the already suspected members will not be expired.
 		 */
-		if (self_id != SWIM_ID_INVALID && csm->csm_alive_count > 2) {
+		if (self_id != SWIM_ID_INVALID && csm->csm_alive_count > 2) {  // 监测网络时延
 			uint64_t hlc1 = csm->csm_last_unpack_hlc;
 			uint64_t hlc2 = crt_hlc_get();
 			uint64_t delay = crt_hlc2msec(hlc2 - hlc1);
@@ -1358,7 +1359,7 @@ crt_context_empty(int provider, int locked)
 }
 
 static int64_t
-crt_exec_progress_cb(struct crt_context *ctx, int64_t timeout)
+crt_exec_progress_cb(struct crt_context *ctx, int64_t timeout/*值为1000*/)
 {
 	struct crt_prog_cb_priv	*cbs_prog;
 	crt_progress_cb		 cb_func;
@@ -1485,7 +1486,7 @@ crt_progress_cond(crt_context_t crt_ctx, int64_t timeout,
 }
 
 int
-crt_progress(crt_context_t crt_ctx, int64_t timeout)
+crt_progress(crt_context_t crt_ctx, int64_t timeout/*值为1000*/)
 {
 	struct crt_context	*ctx;
 	int			 rc = 0;
@@ -1502,6 +1503,8 @@ crt_progress(crt_context_t crt_ctx, int64_t timeout)
 	 * call progress once w/o any timeout before processing timed out
 	 * requests in case any replies are pending in the queue
 	 */
+	// 执行注册的cart, 观察是否有消息到, 有消息到的话触发对应的回调函数 
+	// 此时超时时间为0, 不阻塞等待
 	rc = crt_hg_progress(&ctx->cc_hg_ctx, 0);
 	if (unlikely(rc && rc != -DER_TIMEDOUT))
 		D_ERROR("crt_hg_progress failed, rc: %d.\n", rc);
@@ -1515,7 +1518,7 @@ crt_progress(crt_context_t crt_ctx, int64_t timeout)
 
 	if (timeout != 0 && (rc == 0 || rc == -DER_TIMEDOUT)) {
 		/** call progress once again with the real timeout */
-		rc = crt_hg_progress(&ctx->cc_hg_ctx, timeout);
+		rc = crt_hg_progress(&ctx->cc_hg_ctx, timeout);  // 根据返回的timeout值进行超时等待网络事件
 		if (unlikely(rc && rc != -DER_TIMEDOUT))
 			D_ERROR("crt_hg_progress failed, rc: %d.\n", rc);
 	}

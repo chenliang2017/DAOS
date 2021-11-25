@@ -74,7 +74,7 @@ typedef uint32_t	d_rank_t;
 
 typedef struct {
 	/** list of ranks */
-	d_rank_t	*rl_ranks;
+	d_rank_t	*rl_ranks;  // 集群内部rank列表？？？
 	/** number of ranks */
 	uint32_t	rl_nr;
 } d_rank_list_t;

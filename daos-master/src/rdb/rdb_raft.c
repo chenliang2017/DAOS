@@ -1990,13 +1990,13 @@ rdb_timerd(void *arg)
 {
 	struct rdb     *db = arg;
 	const double	d_min = 0.5;	/* min duration between beats (s) */
-	const double	d_max = 1;	/* max duration between beats (s) */
-	double		d = 0;		/* duration till next beat (s) */
-	double		t;		/* timestamp of beat (s) */
-	double		t_prev;		/* timestamp of previous beat (s) */
+	const double	d_max = 1;		/* max duration between beats (s) */
+	double		d = 0;				/* duration till next beat (s) */
+	double		t;					/* timestamp of beat (s) */
+	double		t_prev;				/* timestamp of previous beat (s) */
 	int		rc;
 	struct sched_req_attr	 attr = { 0 };
-	uuid_t			 anonym_uuid;
+	uuid_t			 		 anonym_uuid;
 	struct sched_request	*sched_req;
 
 	D_DEBUG(DB_MD, DF_DB": timerd starting\n", DP_DB(db));
@@ -2009,16 +2009,19 @@ rdb_timerd(void *arg)
 		return;
 	}
 
-	t = ABT_get_wtime();
+    // 时间跳变会影响ABT_get_wtime, 此处仅使用时间间隔功能，可使用相对时间替换clock_gettime(CLOCK_MONOTONIC)
+
+	t = ABT_get_wtime();  // 协程启动时间
 	t_prev = t;
 	do {
 		struct rdb_raft_state	state;
-		double			d_prev = t - t_prev;
+		double					d_prev = t - t_prev;  // 两次调度的间隔
 
-		if (d_prev - d > 1 /* s */)
+		if (d_prev - d > 1 /* s */)   // 实际调度时间与预期调度时间的差值大于1秒
 			D_WARN(DF_DB": not scheduled for %f second\n",
 			       DP_DB(db), d_prev - d);
 
+		// 执行任务
 		ABT_mutex_lock(db->d_raft_mutex);
 		rdb_raft_save_state(db, &state);
 		rc = raft_periodic(db->d_raft, d_prev * 1000 /* ms */);
@@ -2030,16 +2033,16 @@ rdb_timerd(void *arg)
 		if (db->d_stop)
 			break;
 
-		t_prev = t;
+		t_prev = t;  // 保存本次醒来的时间到t_prev中
 		/* Wait for d in [d_min, d_max] before the next beat. */
-		d = d_min + (d_max - d_min) * rdb_raft_rand();
-		t = ABT_get_wtime();
-		if (t < t_prev + d) {
-			d_prev = t_prev + d - t;
-			sched_req_sleep(sched_req, (uint32_t)(d_prev * 1000));
-			t = ABT_get_wtime();
+		d = d_min + (d_max - d_min) * rdb_raft_rand();  // 取随机区间[0.5, 1.0]
+		t = ABT_get_wtime();   // 取当前时间
+		if (t < t_prev + d) {  // 当前时间小于预期的下次执行时间 
+			d_prev = t_prev + d - t;  // 睡眠等待时间
+			sched_req_sleep(sched_req, (uint32_t)(d_prev * 1000));  // 睡眠等待d_prev * 1000毫秒
+			t = ABT_get_wtime();      // 睡眠醒来, 获取当前时间
 		}
-	} while (!db->d_stop);
+	} while (!db->d_stop);  // rdb停止时, 才会跳出循环  
 
 	sched_req_put(sched_req);
 

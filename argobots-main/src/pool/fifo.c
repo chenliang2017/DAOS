@@ -201,7 +201,7 @@ static void pool_push_many_private(ABT_pool pool, const ABT_unit *units,
     }
 }
 
-static ABT_thread pool_pop_wait(ABT_pool pool, double time_secs,
+static ABT_thread pool_pop_wait(ABT_pool pool, double time_secs/*睡眠等待的秒数*/,
                                 ABT_pool_context context)
 {
     (void)context;
@@ -210,33 +210,33 @@ static ABT_thread pool_pop_wait(ABT_pool pool, double time_secs,
     double time_start = 0.0;
     while (1) {
         if (thread_queue_acquire_spinlock_if_not_empty(&p_data->queue,
-                                                       &p_data->mutex) == 0) {
+                                                       &p_data->mutex) == 0) {  // 不为空的话直接获取返回
             ABTI_thread *p_thread = thread_queue_pop_head(&p_data->queue);
             ABTD_spinlock_release(&p_data->mutex);
             if (p_thread)
                 return ABTI_thread_get_handle(p_thread);
         }
         if (time_start == 0.0) {
-            time_start = ABTI_get_wtime();
+            time_start = ABTI_get_wtime();  // 第一次进来, 记录时间
         } else {
-            double elapsed = ABTI_get_wtime() - time_start;
-            if (elapsed > time_secs)
-                return ABT_THREAD_NULL;
+            double elapsed = ABTI_get_wtime() - time_start;  // 从第一次进来到现在经历的秒数
+            if (elapsed > time_secs)  // 等待的时间已经超过了要求的时间了
+                return ABT_THREAD_NULL;  // 还是没有数据, 直接返回空
         }
         /* Sleep. */
         const int sleep_nsecs = 100;
         struct timespec ts = { 0, sleep_nsecs };
-        nanosleep(&ts, NULL);
+        nanosleep(&ts, NULL);  // 睡眠等待100ns
     }
 }
 
-static ABT_unit pool_pop_timedwait(ABT_pool pool, double abstime_secs)
+static ABT_unit pool_pop_timedwait(ABT_pool pool, double abstime_secs/*传入的是绝对时间*/)
 {
     ABTI_pool *p_pool = ABTI_pool_get_ptr(pool);
     data_t *p_data = pool_get_data_ptr(p_pool->data);
     while (1) {
         if (thread_queue_acquire_spinlock_if_not_empty(&p_data->queue,
-                                                       &p_data->mutex) == 0) {
+                                                       &p_data->mutex) == 0) {  // 有数据直接获取返回
             ABTI_thread *p_thread = thread_queue_pop_head(&p_data->queue);
             ABTD_spinlock_release(&p_data->mutex);
             if (p_thread) {
@@ -247,7 +247,7 @@ static ABT_unit pool_pop_timedwait(ABT_pool pool, double abstime_secs)
         struct timespec ts = { 0, sleep_nsecs };
         nanosleep(&ts, NULL);
 
-        if (ABTI_get_wtime() > abstime_secs)
+        if (ABTI_get_wtime() > abstime_secs)  // 绝对时间对比
             return ABT_UNIT_NULL;
     }
 }

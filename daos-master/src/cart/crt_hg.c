@@ -1346,7 +1346,7 @@ crt_hg_progress(struct crt_hg_context *hg_ctx, int64_t timeout)
 		unsigned int count = 0;
 
 		/** progress RPC execution */
-		hg_ret = HG_Progress(hg_context, hg_timeout);
+		hg_ret = HG_Progress(hg_context, hg_timeout);  // 超时等待hg_timeout时间, 单位是ms
 		if (hg_ret == HG_TIMEOUT) {
 			rc = -DER_TIMEDOUT;
 		} else if (hg_ret != HG_SUCCESS) {

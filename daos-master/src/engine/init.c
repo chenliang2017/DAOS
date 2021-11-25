@@ -125,8 +125,8 @@ hlc_recovery_end(uint64_t bound)
 {
 	int64_t	diff;
 
-	diff = bound - crt_hlc_get();
-	if (diff > 0) {
+	diff = bound - crt_hlc_get();  // 预期的时间窗口和当前时间比较
+	if (diff > 0) {  // 如果还没有到预期的时间窗口, 就睡眠等待
 		struct timespec	tv;
 
 		tv.tv_sec = crt_hlc2nsec(diff) / NSEC_PER_SEC;
@@ -144,7 +144,7 @@ hlc_recovery_end(uint64_t bound)
 		 */
 		D_INFO("nanosleep %lu:%lu before open external service.\n",
 		       tv.tv_sec, tv.tv_nsec);
-		nanosleep(&tv, NULL);
+		nanosleep(&tv, NULL);  // 睡眠等待剩余时间
 	}
 }
 
@@ -585,7 +585,7 @@ server_init(int argc, char *argv[])
 	 * Begin the HLC recovery as early as possible. Do not read the HLC
 	 * before the hlc_recovery_end call below.
 	 */
-	bound = hlc_recovery_begin();
+	bound = hlc_recovery_begin();  // 当前时间 + 16秒, 是否可以理解为时间的上限？恢复的窗口？
 
 	gethostname(dss_hostname, DSS_HOSTNAME_MAX_LEN);
 
@@ -629,6 +629,7 @@ server_init(int argc, char *argv[])
 		goto exit_drpc_fini;
 
 	/* initialize the modular interface */
+	// 初始化dRPC
 	rc = dss_module_init();
 	if (rc)
 		goto exit_abt_init;
@@ -673,7 +674,7 @@ server_init(int argc, char *argv[])
 	/* load modules. Split load and init so first call to dlopen()
 	 * is from the engine to avoid DAOS-4557
 	 */
-	rc = modules_load();
+	rc = modules_load();  // 加载模块, 从库中获取支持的功能集, 保存到全局数组中: dss_modules[...]
 	if (rc)
 		/* Some modules may have been loaded successfully. */
 		D_GOTO(exit_mod_loaded, rc);
@@ -684,18 +685,18 @@ server_init(int argc, char *argv[])
 	 * vos_mod_init) invoked by the dss_module_init_all call below can read
 	 * the HLC.
 	 */
-	hlc_recovery_end(bound);
-	dss_set_start_epoch();
+	hlc_recovery_end(bound);    // 保证服务启动间隔16秒以上
+	dss_set_start_epoch();		// 设置服务启动时的初始版本号
 
 	/* init modules */
-	rc = dss_module_init_all(&dss_mod_facs);
-	if (rc)
+	rc = dss_module_init_all(&dss_mod_facs);  // 将各个模块支持的功能注册到cart的全局变量中保存: crt_gdata.cg_opc_map
+	if (rc)                                   // 注册后, 收到对应消息时就会触发对应的回调函数, 
 		/* Some modules may have been loaded successfully. */
 		D_GOTO(exit_mod_loaded, rc);
 	D_INFO("Module %s successfully initialized\n", modules);
 
 	/* initialize service */
-	rc = dss_srv_init();
+	rc = dss_srv_init();  // 启动了线程
 	if (rc) {
 		D_ERROR("DAOS cannot be initialized using the configured "
 			"path (%s).   Please ensure it is on a PMDK compatible "
@@ -712,7 +713,7 @@ server_init(int argc, char *argv[])
 		goto exit_srv_init;
 	}
 
-	rc = drpc_notify_ready();
+	rc = drpc_notify_ready();  // 通知daos-server, engine已经准备好了, 会启动drpc线程
 	if (rc != 0) {
 		D_ERROR("Failed to notify daos_server: "DF_RC"\n", DP_RC(rc));
 		goto exit_init_state;
@@ -720,16 +721,16 @@ server_init(int argc, char *argv[])
 
 	server_init_state_wait(DSS_INIT_STATE_SET_UP);
 
-	rc = dss_module_setup_all();
+	rc = dss_module_setup_all();  // 组件启动
 	if (rc != 0)
 		goto exit_init_state;
 	D_INFO("Modules successfully set up\n");
 
-	rc = crt_register_event_cb(dss_crt_event_cb, NULL);
+	rc = crt_register_event_cb(dss_crt_event_cb, NULL);  // 注册事件回调
 	if (rc)
 		D_GOTO(exit_init_state, rc);
 
-	rc = crt_register_hlc_error_cb(dss_crt_hlc_error_cb, NULL);
+	rc = crt_register_hlc_error_cb(dss_crt_hlc_error_cb, NULL);  // 注册hlc异常回调
 	if (rc)
 		D_GOTO(exit_init_state, rc);
 

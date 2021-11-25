@@ -156,7 +156,7 @@ static int data_init(int server, crt_init_options_t *opt)
 		d_getenv_int("CRT_TIMEOUT", &timeout);
 
 	if (timeout == 0 || timeout > 3600)
-		crt_gdata.cg_timeout = CRT_DEFAULT_TIMEOUT_S;
+		crt_gdata.cg_timeout = CRT_DEFAULT_TIMEOUT_S;  // 当前值为60秒
 	else
 		crt_gdata.cg_timeout = timeout;
 
@@ -379,9 +379,9 @@ crt_init_opt(crt_group_id_t grpid, uint32_t flags, crt_init_options_t *opt)
 		seed = (unsigned int)(now.tv_sec * 1000000 + now.tv_usec);
 		srandom(seed);
 
-		crt_gdata.cg_server = server;
+		crt_gdata.cg_server = server;  // 是否是服务端
 		crt_gdata.cg_auto_swim_disable =
-			(flags & CRT_FLAG_BIT_AUTO_SWIM_DISABLE) ? 1 : 0;
+			(flags & CRT_FLAG_BIT_AUTO_SWIM_DISABLE) ? 1 : 0;  // 值为0, 默认开启siwm功能
 
 		D_DEBUG(DB_ALL, "Server bit set to %d\n", server);
 		D_DEBUG(DB_ALL, "Swim auto disable set to %d\n",
@@ -416,7 +416,7 @@ crt_init_opt(crt_group_id_t grpid, uint32_t flags, crt_init_options_t *opt)
 				     strlen(crt_na_dict[plugin_idx].nad_str) + 1)) {
 				provider_found = true;
 				crt_gdata.cg_init_prov =
-					crt_na_dict[plugin_idx].nad_type;
+					crt_na_dict[plugin_idx].nad_type;  // 当前配置使用: CRT_NA_OFI_SOCKETS
 				break;
 			}
 		}

@@ -2191,30 +2191,30 @@ crt_register_event_cb(crt_event_cb func, void *args)
 
 	D_MUTEX_LOCK(&crt_plugin_gdata.cpg_mutex);
 
-	cbs_size = crt_plugin_gdata.cpg_event_size;
-	cbs_event = crt_plugin_gdata.cpg_event_cbs;
+	cbs_size = crt_plugin_gdata.cpg_event_size;  // 当前事件回调的空间(允许存多少个回调函数)
+	cbs_event = crt_plugin_gdata.cpg_event_cbs;  // 当前事件回调函数的集合
 
 	for (i = 0; i < cbs_size; i++) {
 		if (cbs_event[i].cecp_func == func &&
-		    cbs_event[i].cecp_args == args) {
+		    cbs_event[i].cecp_args == args) {    // 已有, 返错
 			D_GOTO(out_unlock, rc = -DER_EXIST);
 		}
 	}
 
 	for (i = 0; i < cbs_size; i++) {
-		if (cbs_event[i].cecp_func == NULL) {
+		if (cbs_event[i].cecp_func == NULL) {    // 找到空间直接使用
 			cbs_event[i].cecp_args = args;
 			cbs_event[i].cecp_func = func;
 			D_GOTO(out_unlock, rc = 0);
 		}
 	}
 
-	D_FREE(crt_plugin_gdata.cpg_event_cbs_old);
+	D_FREE(crt_plugin_gdata.cpg_event_cbs_old);  // 释放备份的老旧数据
 
 	crt_plugin_gdata.cpg_event_cbs_old = cbs_event;
-	cbs_size += CRT_CALLBACKS_NUM;
+	cbs_size += CRT_CALLBACKS_NUM;  // 每次扩展时, 增加4个槽位
 
-	D_ALLOC_ARRAY(cbs_event, cbs_size);
+	D_ALLOC_ARRAY(cbs_event, cbs_size);  // 找不到的话重新申请一份
 	if (cbs_event == NULL) {
 		crt_plugin_gdata.cpg_event_cbs_old = NULL;
 		D_GOTO(out_unlock, rc = -DER_NOMEM);
@@ -2222,8 +2222,8 @@ crt_register_event_cb(crt_event_cb func, void *args)
 
 	if (i > 0)
 		memcpy(cbs_event, crt_plugin_gdata.cpg_event_cbs_old,
-		       i * sizeof(*cbs_event));
-	cbs_event[i].cecp_args = args;
+		       i * sizeof(*cbs_event));  // 拷贝老旧数据到新空间
+	cbs_event[i].cecp_args = args;  // 新添加的回调加入
 	cbs_event[i].cecp_func = func;
 
 	crt_plugin_gdata.cpg_event_cbs  = cbs_event;
@@ -2437,8 +2437,8 @@ grp_add_to_membs_list(struct crt_grp_priv *grp_priv, d_rank_t rank)
 			D_ERROR("crt_swim_rank_add() failed: rc=%d\n", rc);
 			D_GOTO(out, 0);
 		} else {
-			membs->rl_ranks[index] = rank;
-			grp_priv->gp_size++;
+			membs->rl_ranks[index] = rank;  // 加入集群rank列表？
+			grp_priv->gp_size++;            // rank的总数
 		}
 	} else {
 		membs->rl_ranks[index] = rank;

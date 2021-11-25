@@ -45,7 +45,7 @@ typedef struct {
 	 *
 	 * \param[in]	htable	hash table
 	 * \param[in]	link	The link chain of the record
-	 * \param[in]	key	Key to compare
+	 * \param[in]	key		Key to compare
 	 * \param[in]	ksize	Size of the key
 	 *
 	 * \retval	true	The key of the record equals to \p key.
@@ -222,9 +222,9 @@ struct d_hash_table {
 	/** different type of locks based on ht_feats */
 	union d_hash_lock	 ht_lock;
 	/** bits to generate number of buckets */
-	uint32_t		 ht_bits;
+	uint32_t		 	 ht_bits;
 	/** feature bits */
-	uint32_t		 ht_feats;
+	uint32_t		 	 ht_feats;
 #if D_HASH_DEBUG
 	/** maximum search depth ever */
 	unsigned int		 ht_dep_max;

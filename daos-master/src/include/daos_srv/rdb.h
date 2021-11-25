@@ -6,9 +6,9 @@
 /**
  * \file
  *
- * rdb: Replicated Database
+ * rdb: Replicated Database  复制型数据库, 分布式数据库的一种, 副本模式下的分布式数据库
  *
- * An RDB database comprises a hierarchy of key-value stores (KVSs), much like
+ * An RDB database comprises(包含) a hierarchy(层级结构) of key-value stores (KVSs), much like
  * how a file system comprises a hierarchy of directories. A key-value pair
  * (KV) in a (parent) KVS may be another (child) KVS. A KVS is therefore
  * identified by a path, which is the list of keys leading from the root KVS to

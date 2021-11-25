@@ -157,6 +157,7 @@ struct srv_profile_op {
 
 /* Holding the total trunk list for a specific profiling module */
 
+//系统启动到当前为止经历过的时间, 相对时间
 #define D_TIME_START(start, op)			\
 do {						\
 	struct daos_profile *dp;		\
@@ -167,6 +168,7 @@ do {						\
 	start = daos_get_ntime();		\
 } while (0)
 
+//系统启动到当前为止经历过的时间, 相对时间
 #define D_TIME_END(start, op)			\
 do {						\
 	struct daos_profile *dp;		\

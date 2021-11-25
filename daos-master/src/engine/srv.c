@@ -480,7 +480,7 @@ dss_srv_handler(void *arg)
 	/* main service progress loop */
 	for (;;) {
 		if (dx->dx_comm) {
-			rc = crt_progress(dmi->dmi_ctx, dx->dx_timeout);
+			rc = crt_progress(dmi->dmi_ctx, dx->dx_timeout);  // dx_timeout 值为1000
 			if (rc != 0 && rc != -DER_TIMEDOUT) {
 				D_ERROR("failed to progress CART context: %d\n",
 					rc);
@@ -953,7 +953,7 @@ dss_xstreams_init(void)
 	}
 
 	/* start main IO service XS */
-	for (i = 0; i < dss_tgt_nr; i++) {
+	for (i = 0; i < dss_tgt_nr; i++) {		// 4个
 		xs_id = DSS_MAIN_XS_ID(i);
 		rc = dss_start_xs_id(xs_id);
 		if (rc)
@@ -1191,7 +1191,7 @@ dss_srv_init(void)
 	xstream_data.xd_init_step  = XD_INIT_NONE;
 	xstream_data.xd_ult_signal = false;
 
-	D_ALLOC_ARRAY(xstream_data.xd_xs_ptrs, DSS_XS_NR_TOTAL);  // 申请空间
+	D_ALLOC_ARRAY(xstream_data.xd_xs_ptrs, DSS_XS_NR_TOTAL);  // 申请空间，9个？
 	if (xstream_data.xd_xs_ptrs == NULL)
 		D_GOTO(failed, rc = -DER_NOMEM);
 	xstream_data.xd_xs_nr = 0;

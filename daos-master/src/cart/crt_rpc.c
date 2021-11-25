@@ -1704,9 +1704,9 @@ crt_rpc_common_hdlr(struct crt_rpc_priv *rpc_priv)
 		rc = crt_ctx->cc_rpc_cb((crt_context_t)crt_ctx,
 					&rpc_priv->crp_pub,
 					crt_handle_rpc,
-					crt_ctx->cc_rpc_cb_arg);
+					crt_ctx->cc_rpc_cb_arg);  // 执行回调函数 dss_rpc_hdlr，排队处理？
 	} else {
-		rpc_priv->crp_opc_info->coi_rpc_cb(&rpc_priv->crp_pub);		// Op注册的回调函数
+		rpc_priv->crp_opc_info->coi_rpc_cb(&rpc_priv->crp_pub);	
 		/*
 		 * Correspond to crt_rpc_handler_common -> crt_rpc_priv_init's
 		 * set refcount as 1.

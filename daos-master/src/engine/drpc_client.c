@@ -122,7 +122,7 @@ dss_drpc_call(int32_t module, int32_t method, void *req, size_t req_size,
 	}
 
 	/* Create a thread to avoid blocking the current xstream. */
-	rc = pthread_create(&thread, NULL /* attr */, dss_drpc_thread, &arg);
+	rc = pthread_create(&thread, NULL /* attr */, dss_drpc_thread, &arg);  // 启动drpc线程
 	if (rc != 0) {
 		D_ERROR("failed to create thread for dRPC: %d "DF_RC"\n", rc,
 			DP_RC(daos_errno2der(rc)));

@@ -227,7 +227,7 @@ daos_rank_list_valid(const d_rank_list_t *rl)
 }
 
 static inline uint64_t
-daos_get_ntime(void)
+daos_get_ntime(void)        //系统启动到当前为止经历过的时间, 相对时间
 {
 	struct timespec	tv;
 
@@ -236,16 +236,16 @@ daos_get_ntime(void)
 }
 
 static inline uint64_t
-daos_getntime_coarse(void)
+daos_getntime_coarse(void)        // 系统启动到目前为止经历过的时间, 精度较daos_get_ntime低
 {
 	struct timespec	tv;
 
-	clock_gettime(CLOCK_MONOTONIC_COARSE, &tv);
+	clock_gettime(CLOCK_MONOTONIC_COARSE, &tv);  // 功能与CLOCK_MONOTONIC一致, 精度较CLOCK_MONOTONIC低
 	return ((uint64_t)tv.tv_sec * NSEC_PER_SEC + tv.tv_nsec);
 }
 
 static inline uint64_t
-daos_wallclock_secs(void)
+daos_wallclock_secs(void)  // 获取时钟时间
 {
 	struct timespec         now;
 	int                     rc;
@@ -261,16 +261,16 @@ daos_wallclock_secs(void)
 }
 
 static inline uint64_t
-daos_getmtime_coarse(void)
+daos_getmtime_coarse(void)  // 获取系统启动到目前为止的时间, 相对时间
 {
 	struct timespec tv;
 
-	clock_gettime(CLOCK_MONOTONIC_COARSE, &tv);
+	clock_gettime(CLOCK_MONOTONIC_COARSE, &tv);  // 功能与CLOCK_MONOTONIC一致, 精度较CLOCK_MONOTONIC低
 	return ((uint64_t)tv.tv_sec * 1000 + tv.tv_nsec / NSEC_PER_MSEC);
 }
 
 static inline uint64_t
-daos_getutime(void)
+daos_getutime(void)  //相对时间, 系统启动到目前为止经历过的微秒数
 {
 	struct timespec tv;
 
@@ -278,12 +278,12 @@ daos_getutime(void)
 	return d_time2us(tv);
 }
 
-static inline int daos_gettime_coarse(uint64_t *time)
+static inline int daos_gettime_coarse(uint64_t *time)  // 获取系统启动到目前为止经历过的秒数
 {
 	struct timespec	now;
 	int		rc;
 
-	rc = clock_gettime(CLOCK_MONOTONIC_COARSE, &now);
+	rc = clock_gettime(CLOCK_MONOTONIC_COARSE, &now);  // 功能与CLOCK_MONOTONIC一致, 精度较CLOCK_MONOTONIC低
 	if (rc == 0)
 		*time = now.tv_sec;
 

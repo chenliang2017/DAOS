@@ -168,7 +168,7 @@ static ABT_thread pool_pop_wait(ABT_pool pool, double time_secs,
     data_t *p_data = pool_get_data_ptr(p_pool->data);
     pthread_mutex_lock(&p_data->mutex);
     if (thread_queue_is_empty(&p_data->queue)) {
-#if defined(ABT_CONFIG_USE_CLOCK_GETTIME)
+#if defined(ABT_CONFIG_USE_CLOCK_GETTIME)  // 该宏有定义
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += (time_t)time_secs;
@@ -178,6 +178,8 @@ static ABT_thread pool_pop_wait(ABT_pool pool, double time_secs,
             ts.tv_nsec -= 1e9;
         }
         pthread_cond_timedwait(&p_data->cond, &p_data->mutex, &ts);
+		// 可以使用链接中的方法来达到相对时间等待的目的 https://blog.csdn.net/yichigo/article/details/23459613
+		// 也可以在该函数中直接使用下面#else中的内容
 #else
         /* We cannot use pthread_cond_timedwait().  Let's use nanosleep()
          * instead */
@@ -214,6 +216,7 @@ static ABT_unit pool_pop_timedwait(ABT_pool pool, double abstime_secs)
         struct timespec ts;
         convert_double_sec_to_timespec(&ts, abstime_secs);
         pthread_cond_timedwait(&p_data->cond, &p_data->mutex, &ts);
+		// 修改方式参看pool_pop_wait
     }
     ABTI_thread *p_thread = thread_queue_pop_head(&p_data->queue);
     pthread_mutex_unlock(&p_data->mutex);

@@ -8,11 +8,11 @@
 
 /* Inlined functions for Timer */
 
-static inline double ABTI_get_wtime(void)
+static inline double ABTI_get_wtime(void)  // 绝对时间, 1970-01-01 00:00:00距今的秒数
 {
     ABTD_time t;
-    ABTD_time_get(&t);
-    return ABTD_time_read_sec(&t);
+    ABTD_time_get(&t);  // 获取绝对时间
+    return ABTD_time_read_sec(&t);  // 转换成秒
 }
 
 static inline ABTI_timer *ABTI_timer_get_ptr(ABT_timer timer)

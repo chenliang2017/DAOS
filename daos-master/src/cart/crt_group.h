@@ -49,7 +49,7 @@ struct crt_grp_priv;
 
 struct crt_grp_priv {
 	d_list_t		 gp_link; /* link to crt_grp_list */
-	crt_group_t		 gp_pub; /* public grp handle */
+	crt_group_t		 gp_pub;  /* public grp handle */
 
 	/* Link to a primary group; only set for secondary groups  */
 	struct crt_grp_priv	*gp_priv_prim;
@@ -72,10 +72,10 @@ struct crt_grp_priv {
 	 * It's used to store SWIM related information and should strictly
 	 * correspond to members in gp_membs.
 	 */
-	struct crt_swim_membs	 gp_membs_swim;
+	struct crt_swim_membs	 gp_membs_swim;  // swim相关
 
 	/* size (number of membs) of group */
-	uint32_t		 gp_size;
+	uint32_t		 gp_size;				 // rank的总数
 	/*
 	 * logical self rank in this group, only valid for local group.
 	 * the gp_membs->rl_ranks[gp_self] is its rank number in primary group.
@@ -83,7 +83,7 @@ struct crt_grp_priv {
 	 * If gp_self is CRT_NO_RANK, it usually means the group version is not
 	 * up to date.
 	 */
-	d_rank_t		 gp_self;
+	d_rank_t		 gp_self;  // 自己的rank值
 	/* List of PSR ranks */
 	d_rank_list_t		 *gp_psr_ranks;
 	/* PSR rank in attached group */

@@ -12,6 +12,11 @@
 #include <ctype.h>
 #include "crt_internal.h"
 
+/* Opcode registered in crt will be
+*  client/server | mod_id | rpc_version | op_code
+*    {1 bit}	   {7 bits}    {8 bits}    {16 bits}
+*/
+
 #define CRT_OPC_SWIM_VERSION	2
 #define CRT_SWIM_FAIL_BASE	((CRT_OPC_SWIM_BASE >> 16) | \
 				 (CRT_OPC_SWIM_VERSION << 4))
@@ -82,13 +87,14 @@ crt_swim_fault_init(const char *args)
 
 static void crt_swim_srv_cb(crt_rpc_t *rpc);
 
+// swim支持两个消息
 static struct crt_proto_rpc_format crt_swim_proto_rpc_fmt[] = {
-	{
+	{     // 第一个消息
 		.prf_flags	= CRT_RPC_FEAT_QUEUE_FRONT,
-		.prf_req_fmt	= &CQF_crt_rpc_swim,
-		.prf_hdlr	= crt_swim_srv_cb,
+		.prf_req_fmt	= &CQF_crt_rpc_swim,    // 输入/输出参数整理成结构体
+		.prf_hdlr	= crt_swim_srv_cb,			// 消息对应的处理函数
 		.prf_co_ops	= NULL,
-	}, {
+	}, {  // 第二个消息
 		.prf_flags	= CRT_RPC_FEAT_QUEUE_FRONT,
 		.prf_req_fmt	= &CQF_crt_rpc_swim,
 		.prf_hdlr	= crt_swim_srv_cb,
@@ -125,23 +131,23 @@ crt_swim_update_delays(struct crt_swim_membs *csm, uint64_t hlc,
 
 	/* Update all piggybacked members with remote delays */
 	crt_swim_csm_lock(csm);
-	for (i = 0; i < nupds; i++) {
+	for (i = 0; i < nupds; i++) {   // 发送端发来了nuds个状态信息
 		struct swim_member_state *state = &upds[i].smu_state;
 		swim_id_t id = upds[i].smu_id;
 
-		D_CIRCLEQ_FOREACH(cst, &csm->csm_head, cst_link) {
-			if (cst->cst_id == id) {
+		D_CIRCLEQ_FOREACH(cst, &csm->csm_head, cst_link) {  // 本地存储的远端的rank
+			if (cst->cst_id == id) {  // 本地rank于远端rank一致
 				uint32_t l = cst->cst_state.sms_delay;
 
 				if (id == from_id) {
-					l = l ? (l + rcv_delay) / 2 : rcv_delay;
+					l = l ? (l + rcv_delay) / 2 : rcv_delay;  // 和接收时延加和算平均
 					snd_delay = l;
 				} else {
-					uint32_t r = state->sms_delay;
+					uint32_t r = state->sms_delay;  // 和带过来的时延加和算平均
 
 					l = l ? (l + r) / 2 : r;
 				}
-				cst->cst_state.sms_delay = l;
+				cst->cst_state.sms_delay = l;  // 更新网络时延
 
 				if (crt_swim_fail_delay &&
 				    crt_swim_fail_id == id) {
@@ -161,6 +167,7 @@ crt_swim_update_delays(struct crt_swim_membs *csm, uint64_t hlc,
 	return snd_delay;
 }
 
+// 收到远端的dping和iping
 static void crt_swim_srv_cb(crt_rpc_t *rpc)
 {
 	struct crt_rpc_priv	*rpc_priv = NULL;
@@ -191,10 +198,10 @@ static void crt_swim_srv_cb(crt_rpc_t *rpc)
 	rpc_type = (enum swim_rpc_type)(rpc->cr_opc & CRT_PROTO_COUNT_MASK);
 	switch (rpc_type) {
 	case SWIM_RPC_PING:
-		to_id = rpc->cr_ep.ep_rank;
+		to_id = rpc->cr_ep.ep_rank;  // dping的对象
 		break;
 	case SWIM_RPC_IREQ:
-		to_id = rpc_in->swim_id;
+		to_id = rpc_in->swim_id;     // iping的对象
 		break;
 	default:
 		to_id = rpc->cr_ep.ep_rank;
@@ -215,18 +222,19 @@ static void crt_swim_srv_cb(crt_rpc_t *rpc)
 	 * this request.
 	 */
 	if (hlc > rpc_priv->crp_req_hdr.cch_hlc)
-		rcv_delay = crt_hlc2msec(hlc - rpc_priv->crp_req_hdr.cch_hlc);
+		rcv_delay = crt_hlc2msec(hlc - rpc_priv->crp_req_hdr.cch_hlc);  // 网络上的接收延迟
 
+    // 更新网络时延
 	snd_delay = crt_swim_update_delays(csm, hlc, from_id, rcv_delay,
 					   rpc_in->upds.ca_arrays,
 					   rpc_in->upds.ca_count);
 
-	if (rcv_delay > max_delay || snd_delay > max_delay) {
+	if (rcv_delay > max_delay || snd_delay > max_delay) {  // 网络时延过大
 		csm->csm_nglitches++;
-		if (rcv_delay > max_delay)
+		if (rcv_delay > max_delay)  // 本次接收时延
 			swim_net_glitch_update(ctx, self_id, rcv_delay - max_delay);
-		if (snd_delay > max_delay)
-			swim_net_glitch_update(ctx, from_id, snd_delay - max_delay);
+		if (snd_delay > max_delay)  // 历次时延的平均
+			swim_net_glitch_update(ctx, from_id, snd_delay - max_delay);  // 根据网络时延, 将deadline向后漂移
 	} else {
 		csm->csm_nmessages++;
 	}
@@ -236,8 +244,8 @@ static void crt_swim_srv_cb(crt_rpc_t *rpc)
 		csm->csm_nmessages = 0;
 	}
 
-	if (csm->csm_nglitches > CRT_SWIM_NGLITCHES_TRESHOLD) {
-		D_ERROR("Too many network glitches are detected, "
+	if (csm->csm_nglitches > CRT_SWIM_NGLITCHES_TRESHOLD) {  // 监测到的网络时延次数超阈值，将阈值翻倍
+		D_ERROR("Too many network glitches are detected, "   // 无法处理网络异常？？？
 			"therefore increase SWIM timeouts by twice.\n");
 
 		swim_suspect_timeout_set(swim_suspect_timeout_get() * 2);
@@ -247,14 +255,14 @@ static void crt_swim_srv_cb(crt_rpc_t *rpc)
 		csm->csm_nglitches = 0;
 	}
 
-	if (CRT_SWIM_SHOULD_FAIL(d_fa_swim_drop_rpc, self_id)) {
+	if (CRT_SWIM_SHOULD_FAIL(d_fa_swim_drop_rpc, self_id)) {  // 注入故常相关
 		rc = d_fa_swim_drop_rpc->fa_err_code;
 		D_EMIT("drop %s with %zu updates. %lu: %lu <= %lu "DF_RC"\n",
 			SWIM_RPC_TYPE_STR[rpc_type], rpc_in->upds.ca_count,
 			self_id, to_id, from_id, DP_RC(rc));
 	} else {
 		rc = swim_updates_parse(ctx, from_id, rpc_in->upds.ca_arrays,
-					rpc_in->upds.ca_count);
+					rpc_in->upds.ca_count);  // 解析发过来的状态信息
 		if (rc == -DER_SHUTDOWN) {
 			if (grp_priv->gp_size > 1)
 				D_ERROR("SWIM shutdown\n");
@@ -270,10 +278,10 @@ static void crt_swim_srv_cb(crt_rpc_t *rpc)
 		case SWIM_RPC_PING:
 			rc = swim_updates_prepare(ctx, from_id, from_id,
 						  &rpc_out->upds.ca_arrays,
-						  &rpc_out->upds.ca_count);
+						  &rpc_out->upds.ca_count);  //dping
 			break;
 		case SWIM_RPC_IREQ:
-			rc = swim_ipings_suspend(ctx, from_id, to_id, rpc);
+			rc = swim_ipings_suspend(ctx, from_id, to_id, rpc);  // iping
 			if (rc == 0 || rc == -DER_ALREADY) {
 				D_TRACE_DEBUG(DB_TRACE, rpc,
 					      "suspend %s reply. "
@@ -286,7 +294,7 @@ static void crt_swim_srv_cb(crt_rpc_t *rpc)
 				if (rc == -DER_ALREADY)
 					return; /* don't ping second time */
 
-				rc = swim_updates_send(ctx, to_id, to_id);
+				rc = swim_updates_send(ctx, to_id, to_id);  // 发送消息
 				if (rc)
 					D_TRACE_ERROR(rpc,
 						      "swim_updates_send(): "
@@ -309,7 +317,7 @@ out_reply:
 
 	rpc_out->rc  = rc;
 	rpc_out->pad = 0;
-	rc = crt_reply_send(rpc);
+	rc = crt_reply_send(rpc);  // 发送消息
 	D_FREE(rpc_out->upds.ca_arrays);
 	if (rc)
 		D_TRACE_ERROR(rpc, "send reply: "DF_RC" failed: "DF_RC"\n",
@@ -402,7 +410,7 @@ static void crt_swim_cli_cb(const struct crt_cb_info *cb_info)
 			      DF_RC"\n", self_id, from_id, to_id, DP_RC(rc));
 	}
 
-	rc = swim_ipings_reply(ctx, to_id, reply_rc);
+	rc = swim_ipings_reply(ctx, to_id, reply_rc);  // 回复iping
 	if (rc)
 		D_TRACE_ERROR(rpc, "send reply: "DF_RC" failed: "DF_RC"\n",
 			      DP_RC(rpc_out->rc), DP_RC(rc));
@@ -415,12 +423,12 @@ out:
 	}
 }
 
-static int crt_swim_send_request(struct swim_context *ctx, swim_id_t id,
-				 swim_id_t to, struct swim_member_update *upds,
+static int crt_swim_send_request(struct swim_context *ctx, swim_id_t id/*目标id*/,
+				 swim_id_t to/*要发送的rank-id*/, struct swim_member_update *upds,
 				 size_t nupds)
 {
 	struct crt_grp_priv	*grp_priv = crt_gdata.cg_grp->gg_primary_grp;
-	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;
+	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;  // 存储在cart全局变量中的rank成员(daos_server通过dRPC告知的daos_engine)
 	struct crt_rpc_swim_in	*rpc_in;
 	enum swim_rpc_type	 rpc_type;
 	crt_context_t		 crt_ctx;
@@ -445,20 +453,20 @@ static int crt_swim_send_request(struct swim_context *ctx, swim_id_t id,
 	ep.ep_rank = (d_rank_t)to;
 	ep.ep_tag  = ctx_idx;
 
-	rpc_type = (id == to) ? SWIM_RPC_PING : SWIM_RPC_IREQ;
-	opc = CRT_PROTO_OPC(CRT_OPC_SWIM_BASE, CRT_OPC_SWIM_VERSION, rpc_type);
-	rc = crt_req_create(crt_ctx, &ep, opc, &rpc);
+	rpc_type = (id == to) ? SWIM_RPC_PING : SWIM_RPC_IREQ;  // id和to一致表示这是一个dping, 否则是一个iping
+	opc = CRT_PROTO_OPC(CRT_OPC_SWIM_BASE, CRT_OPC_SWIM_VERSION, rpc_type);  // 生成Op的id(初始化的时候已经注册了)
+	rc = crt_req_create(crt_ctx, &ep, opc, &rpc);  // 根据Op类型创建rpc句柄
 	if (rc) {
 		D_ERROR("crt_req_create(): "DF_RC"\n", DP_RC(rc));
 		D_GOTO(out, rc);
 	}
 
-	rpc_in = crt_req_get(rpc);
-	rpc_in->swim_id = id;
+	rpc_in = crt_req_get(rpc);  // 入参
+	rpc_in->swim_id = id;             // 目标id
 	rpc_in->upds.ca_arrays = upds;
-	rpc_in->upds.ca_count  = nupds;
+	rpc_in->upds.ca_count  = nupds;   // rank状态的数量
 
-	if (CRT_SWIM_SHOULD_FAIL(d_fa_swim_drop_rpc, self_id)) {
+	if (CRT_SWIM_SHOULD_FAIL(d_fa_swim_drop_rpc, self_id)) {  // 注入故障相关
 		struct crt_rpc_swim_out *rpc_out = crt_reply_get(rpc);
 		struct crt_cb_info cbinfo;
 
@@ -483,9 +491,9 @@ static int crt_swim_send_request(struct swim_context *ctx, swim_id_t id,
 	}
 
 	timeout_sec = crt_swim_rpc_timeout();
-	if (rpc_type == SWIM_RPC_IREQ)
+	if (rpc_type == SWIM_RPC_IREQ)  // iping的超时时间增加一倍
 		timeout_sec *= 2;
-	rc = crt_req_set_timeout(rpc, timeout_sec);
+	rc = crt_req_set_timeout(rpc, timeout_sec);  // 设置rpc超时时间
 	if (rc) {
 		D_TRACE_ERROR(rpc, "crt_req_set_timeout(): "DF_RC"\n",
 			      DP_RC(rc));
@@ -497,7 +505,7 @@ static int crt_swim_send_request(struct swim_context *ctx, swim_id_t id,
 		      SWIM_RPC_TYPE_STR[rpc_type], rpc_in->upds.ca_count,
 		      self_id, (rpc_type == SWIM_RPC_PING) ? self_id : id, to);
 
-	return crt_req_send(rpc, crt_swim_cli_cb, ctx);
+	return crt_req_send(rpc, crt_swim_cli_cb/*应答后的回调函数*/, ctx);  // 发送出去
 
 out:
 	if (rc && rpc != NULL)
@@ -505,8 +513,9 @@ out:
 	return rc;
 }
 
-static int crt_swim_send_reply(struct swim_context *ctx, swim_id_t from,
-			       swim_id_t to, int ret_rc, void *args)
+// 回复iping请求, 告知iping的结果
+static int crt_swim_send_reply(struct swim_context *ctx, swim_id_t from/*to要查询的rank编号*/,
+			       swim_id_t to/*要发送的rank*/, int ret_rc, void *args)
 {
 	crt_rpc_t		*rpc = args;
 	struct crt_rpc_priv	*rpc_priv;
@@ -515,11 +524,11 @@ static int crt_swim_send_reply(struct swim_context *ctx, swim_id_t from,
 	int			 rc;
 
 	rpc_out = crt_reply_get(rpc);
-	rpc_out->upds.ca_arrays = NULL;
-	rpc_out->upds.ca_count  = 0;
+	rpc_out->upds.ca_arrays = NULL;  //
+	rpc_out->upds.ca_count  = 0;     // 状态的数量
 	rc = swim_updates_prepare(ctx, from, to,
 				  &rpc_out->upds.ca_arrays,
-				  &rpc_out->upds.ca_count);
+				  &rpc_out->upds.ca_count);  // 准备状态,
 	rpc_out->rc = rc ? rc : ret_rc;
 	rpc_out->pad = 0;
 
@@ -530,7 +539,7 @@ static int crt_swim_send_reply(struct swim_context *ctx, swim_id_t from,
 		      rpc_out->upds.ca_count,
 		      self_id, from, to, DP_RC(rpc_out->rc));
 
-	rc = crt_reply_send(rpc);
+	rc = crt_reply_send(rpc);  // 回发
 	D_FREE(rpc_out->upds.ca_arrays);
 	if (rc)
 		D_TRACE_ERROR(rpc, "send reply: "DF_RC" failed: "DF_RC"\n",
@@ -546,10 +555,11 @@ static int crt_swim_send_reply(struct swim_context *ctx, swim_id_t from,
 	return rc;
 }
 
+// 找到第一个非自己非dead的rank, 作为本节点的dping对象
 static swim_id_t crt_swim_get_dping_target(struct swim_context *ctx)
 {
 	struct crt_grp_priv	*grp_priv = crt_gdata.cg_grp->gg_primary_grp;
-	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;
+	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;  // 存储在cart全局变量中的rank成员(daos_server通过dRPC告知的daos_engine)
 	swim_id_t		 self_id = swim_self_get(ctx);
 	swim_id_t		 id;
 	uint32_t		 count = 0;
@@ -561,6 +571,7 @@ static swim_id_t crt_swim_get_dping_target(struct swim_context *ctx)
 
 	crt_swim_csm_lock(csm);
 	do {
+		// 超过了rank的总数
 		if (count++ > grp_priv->gp_size) /* don't have a candidate */
 			D_GOTO(out_unlock, id = SWIM_ID_INVALID);
 		/*
@@ -572,6 +583,7 @@ static swim_id_t crt_swim_get_dping_target(struct swim_context *ctx)
 		id = csm->csm_target->cst_id;
 	} while (id == self_id ||
 		 csm->csm_target->cst_state.sms_status == SWIM_MEMBER_DEAD);
+	// 找到第一个非自己非dead的rank, 作为本节点的dping对象
 out_unlock:
 	crt_swim_csm_unlock(csm);
 out:
@@ -585,10 +597,11 @@ out:
 	return id;
 }
 
+// 找一个非自己非alive状态的rank作为iping的对象
 static swim_id_t crt_swim_get_iping_target(struct swim_context *ctx)
 {
 	struct crt_grp_priv	*grp_priv = crt_gdata.cg_grp->gg_primary_grp;
-	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;
+	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;  // 存储在cart全局变量中的rank成员(daos_server通过dRPC告知的daos_engine)
 	swim_id_t		 self_id = swim_self_get(ctx);
 	swim_id_t		 id;
 	uint32_t		 count = 0;
@@ -600,6 +613,7 @@ static swim_id_t crt_swim_get_iping_target(struct swim_context *ctx)
 
 	crt_swim_csm_lock(csm);
 	do {
+		// 超过了rank的总数
 		if (count++ > grp_priv->gp_size) /* don't have a candidate */
 			D_GOTO(out_unlock, id = SWIM_ID_INVALID);
 		/*
@@ -611,6 +625,7 @@ static swim_id_t crt_swim_get_iping_target(struct swim_context *ctx)
 		id = csm->csm_target->cst_id;
 	} while (id == self_id ||
 		 csm->csm_target->cst_state.sms_status != SWIM_MEMBER_ALIVE);
+	// 找一个非自己非alive状态的rank作为iping的对象
 out_unlock:
 	crt_swim_csm_unlock(csm);
 out:
@@ -658,18 +673,19 @@ crt_swim_notify_rank_state(d_rank_t rank, struct swim_member_state *state)
 	}
 }
 
+// 遍历所有rank的节点, 找到于待查询id一致的rank, 返回状态信息
 static int crt_swim_get_member_state(struct swim_context *ctx,
 				     swim_id_t id,
 				     struct swim_member_state *state)
 {
 	struct crt_grp_priv	*grp_priv = crt_gdata.cg_grp->gg_primary_grp;
-	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;
+	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;  // 存储在cart全局变量中的rank成员(daos_server通过dRPC告知的daos_engine)
 	struct crt_swim_target	*cst;
 	int			 rc = -DER_NONEXIST;
 
 	D_ASSERT(state != NULL);
 	crt_swim_csm_lock(csm);
-	D_CIRCLEQ_FOREACH(cst, &csm->csm_head, cst_link) {
+	D_CIRCLEQ_FOREACH(cst, &csm->csm_head, cst_link) {  // 遍历所有rank的节点, 找到于待查询id一致的rank, 返回状态信息
 		if (cst->cst_id == id) {
 			*state = cst->cst_state;
 			rc = 0;
@@ -681,29 +697,30 @@ static int crt_swim_get_member_state(struct swim_context *ctx,
 	return rc;
 }
 
+// 设置rank的状态信息
 static int crt_swim_set_member_state(struct swim_context *ctx,
 				     swim_id_t id,
 				     struct swim_member_state *state)
 {
 	struct crt_grp_priv	*grp_priv = crt_gdata.cg_grp->gg_primary_grp;
-	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;
+	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;  // 存储在cart全局变量中的rank成员(daos_server通过dRPC告知的daos_engine)
 	struct crt_swim_target	*cst;
 	int			 rc = -DER_NONEXIST;
 
 	D_ASSERT(state != NULL);
 	if (state->sms_status == SWIM_MEMBER_SUSPECT)
-		state->sms_delay += swim_ping_timeout_get();
+		state->sms_delay += swim_ping_timeout_get();  // suspect状态的rank超时时间扩大
 
 	crt_swim_csm_lock(csm);
 	D_CIRCLEQ_FOREACH(cst, &csm->csm_head, cst_link) {
 		if (cst->cst_id == id) {
-			if (cst->cst_state.sms_status != SWIM_MEMBER_ALIVE &&
-			    state->sms_status == SWIM_MEMBER_ALIVE)
-				csm->csm_alive_count++;
-			else if (cst->cst_state.sms_status == SWIM_MEMBER_ALIVE &&
-			    state->sms_status != SWIM_MEMBER_ALIVE)
-				csm->csm_alive_count--;
-			cst->cst_state = *state;
+			if (cst->cst_state.sms_status != SWIM_MEMBER_ALIVE &&  // 原始状态不是alive
+			    state->sms_status == SWIM_MEMBER_ALIVE)  // 当前状态是alive
+				csm->csm_alive_count++;  // alive的rank数量加1
+			else if (cst->cst_state.sms_status == SWIM_MEMBER_ALIVE &&  // 原始状态是alive
+			    state->sms_status != SWIM_MEMBER_ALIVE)  // 当前状态是非alive
+				csm->csm_alive_count--;  // alive的rank数量减1
+			cst->cst_state = *state;  // 保存新状态
 			rc = 0;
 			break;
 		}
@@ -722,7 +739,7 @@ static void crt_swim_new_incarnation(struct swim_context *ctx,
 {
 	struct crt_grp_priv	*grp_priv = crt_gdata.cg_grp->gg_primary_grp;
 	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;
-	uint64_t		 incarnation = crt_hlc_get();
+	uint64_t		 incarnation = crt_hlc_get();  // hlc时间作为增量
 
 	D_ASSERT(state != NULL);
 	D_ASSERTF(id == swim_self_get(ctx), DF_U64" == "DF_U64"\n",
@@ -733,7 +750,8 @@ static void crt_swim_new_incarnation(struct swim_context *ctx,
 	state->sms_incarnation = incarnation;
 }
 
-static int64_t crt_swim_progress_cb(crt_context_t crt_ctx, int64_t timeout, void *arg)
+// swim的处理函数, 看日志貌似每秒处理一次
+static int64_t crt_swim_progress_cb(crt_context_t crt_ctx, int64_t timeout/*值为1000*/, void *arg)
 {
 	struct crt_grp_priv	*grp_priv = crt_gdata.cg_grp->gg_primary_grp;
 	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;
@@ -759,7 +777,7 @@ static int64_t crt_swim_progress_cb(crt_context_t crt_ctx, int64_t timeout, void
 		uint64_t now = swim_now_ms();
 
 		if (now < ctx->sc_next_event)
-			timeout = ctx->sc_next_event - now;
+			timeout = ctx->sc_next_event - now;  // 外部的CART会根据这个时间进行等待, 最大等待timeout时间, 等待时认为timeout的单位为ms
 	} else if (rc) {
 		D_ERROR("swim_progress(): "DF_RC"\n", DP_RC(rc));
 	}
@@ -799,13 +817,13 @@ static struct swim_ops crt_swim_ops = {
 	.new_incarnation  = &crt_swim_new_incarnation,
 };
 
-int crt_swim_init(int crt_ctx_idx)
+int crt_swim_init(int crt_ctx_idx/*CRT_DEFAULT_PROGRESS_CTX_IDX*/)
 {
 	struct crt_grp_priv	*grp_priv = crt_gdata.cg_grp->gg_primary_grp;
-	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;
+	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;  // 赋值使用, 做出参用
 	d_rank_list_t		*grp_membs;
 	d_rank_t		 self = grp_priv->gp_self;
-	uint64_t		 hlc = crt_hlc_get();
+	uint64_t		 hlc = crt_hlc_get();  // 获取当前时间
 	int			 i, rc;
 
 	if (crt_gdata.cg_swim_inited) {
@@ -825,7 +843,7 @@ int crt_swim_init(int crt_ctx_idx)
 	 * crt_swim_rank_add.
 	 */
 	csm->csm_incarnation = hlc;
-	csm->csm_ctx = swim_init(SWIM_ID_INVALID, &crt_swim_ops, NULL);
+	csm->csm_ctx = swim_init(SWIM_ID_INVALID, &crt_swim_ops, NULL);  // 初始化
 	if (csm->csm_ctx == NULL) {
 		D_ERROR("swim_init() failed for self=%u, crt_ctx_idx=%d\n",
 			self, crt_ctx_idx);
@@ -851,13 +869,13 @@ int crt_swim_init(int crt_ctx_idx)
 		}
 	}
 
-	rc = crt_proto_register(&crt_swim_proto_fmt);
+	rc = crt_proto_register(&crt_swim_proto_fmt);  // 注册swim支持的消息集
 	if (rc) {
 		D_ERROR("crt_proto_register(): "DF_RC"\n", DP_RC(rc));
 		D_GOTO(cleanup, rc);
 	}
 
-	rc = crt_register_progress_cb(crt_swim_progress_cb, crt_ctx_idx, NULL);
+	rc = crt_register_progress_cb(crt_swim_progress_cb, crt_ctx_idx, NULL);  // 注册一个全局的回调
 	if (rc) {
 		D_ERROR("crt_register_progress_cb(): "DF_RC"\n", DP_RC(rc));
 		D_GOTO(cleanup, rc);
@@ -1101,11 +1119,11 @@ int crt_swim_rank_add(struct crt_grp_priv *grp_priv, d_rank_t rank)
 		D_GOTO(out, rc = -DER_NOMEM);
 
 	crt_swim_csm_lock(csm);
-	if (D_CIRCLEQ_EMPTY(&csm->csm_head)) {
+	if (D_CIRCLEQ_EMPTY(&csm->csm_head)) {  // 自己
 		cst->cst_id = (swim_id_t)self;
 		cst->cst_state.sms_incarnation = csm->csm_incarnation;
 		cst->cst_state.sms_status = SWIM_MEMBER_ALIVE;
-		D_CIRCLEQ_INSERT_HEAD(&csm->csm_head, cst, cst_link);
+		D_CIRCLEQ_INSERT_HEAD(&csm->csm_head, cst, cst_link);  // 全局参数 crt_gdata.cg_grp->gg_primary_grp->gp_membs_swim->csm_head
 		self_in_list = true;
 
 		csm->csm_target = cst;
@@ -1122,7 +1140,7 @@ int crt_swim_rank_add(struct crt_grp_priv *grp_priv, d_rank_t rank)
 		}
 	}
 
-	if (rank != self) {
+	if (rank != self) {  // 其他成员
 		if (cst == NULL) {
 			D_ALLOC_PTR(cst);
 			if (cst == NULL)
@@ -1157,7 +1175,7 @@ out_unlock:
 	D_FREE(cst);
 
 	if (id != SWIM_ID_INVALID)
-		(void)swim_member_new_remote(csm->csm_ctx, id);
+		(void)swim_member_new_remote(csm->csm_ctx, id);  // 远端的rank
 
 	if (rc && rc != -DER_ALREADY) {
 		if (rank_in_list)

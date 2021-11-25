@@ -27,20 +27,20 @@ enum {
 struct sched_stats {
 	uint64_t	ss_tot_time;	/* Total CPU time (ms) */
 	uint64_t	ss_relax_time;	/* CPU relax time (ms) */
-	uint64_t	ss_busy_ts;	/* Last busy timestamp (ms) */
+	uint64_t	ss_busy_ts;		/* Last busy timestamp (ms) */
 	uint64_t	ss_print_ts;	/* Last stats print timestamp (ms) */
 	uint64_t	ss_watchdog_ts;	/* Last watchdog print ts (ms) */
 	void		*ss_last_unit;	/* Last executed unit */
 };
 
 struct sched_info {
-	uint64_t		 si_cur_ts;	/* Current timestamp (ms) */
+	uint64_t		 si_cur_ts;		/* Current timestamp (ms) */
 	uint64_t		 si_cur_seq;	/* Current schedule sequence */
 	uint64_t		 si_ult_start;	/* Start time of last executed unit */
 	void			*si_ult_func;	/* Function addr of last executed unit */
 	struct sched_stats	 si_stats;	/* Sched stats */
 	d_list_t		 si_idle_list;	/* All unused requests */
-	d_list_t		 si_sleep_list;	/* All sleeping requests */
+	d_list_t		 si_sleep_list;	/* All sleeping requests, 睡眠等待队列,   升序排列,离si_sleep_list近的最快超时 */
 	d_list_t		 si_fifo_list;	/* All IO requests in FIFO */
 	d_list_t		 si_purge_list;	/* Stale sched_pool_info */
 	struct d_hash_table	*si_pool_hash;	/* All sched_pool_info */

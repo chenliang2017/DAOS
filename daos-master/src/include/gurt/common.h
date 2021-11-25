@@ -510,7 +510,7 @@ d_errno2der(int err)
 }
 
 #ifndef NSEC_PER_SEC
-#define NSEC_PER_SEC  1000000000
+#define NSEC_PER_SEC  1000000000  // 秒转纳秒的单位换算
 #endif
 #ifndef NSEC_PER_MSEC
 #define NSEC_PER_MSEC 1000000
@@ -529,7 +529,7 @@ d_errno2der(int err)
  * \return		0 on success, negative value on error
  */
 static inline int
-d_gettime(struct timespec *t)
+d_gettime(struct timespec *t)  // 相对时间(系统启动到当前的时间)
 {
 	int	rc;
 
@@ -577,7 +577,7 @@ d_timediff(struct timespec start, struct timespec end)
 
 /* Calculate remaining time in ns */
 static inline int64_t
-d_timeleft_ns(const struct timespec *expiration)
+d_timeleft_ns(const struct timespec *expiration)  // 相对时间, 不受时间跳变影响
 {
 	struct timespec		now;
 	int64_t			ns;
@@ -593,7 +593,7 @@ d_timeleft_ns(const struct timespec *expiration)
 }
 
 static inline struct timespec
-d_time_elapsed(const struct timespec start)
+d_time_elapsed(const struct timespec start)  // 相对时间, 不受时间跳变影响
 {
 	struct timespec		now;
 
@@ -604,7 +604,7 @@ d_time_elapsed(const struct timespec start)
 
 /* calculate the number in us after \param sec_diff second */
 static inline uint64_t
-d_timeus_secdiff(unsigned int sec_diff)
+d_timeus_secdiff(unsigned int sec_diff)  // 相对时间, 不受时间跳变影响
 {
 	struct timespec		now;
 	uint64_t		us;

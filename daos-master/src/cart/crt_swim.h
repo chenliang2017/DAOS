@@ -21,20 +21,20 @@
 
 struct crt_swim_target {
 	d_circleq_entry(crt_swim_target) cst_link;
-	swim_id_t			 cst_id;
-	struct swim_member_state	 cst_state;
+	swim_id_t			 			 cst_id;     // rank-id
+	struct swim_member_state	 	 cst_state;
 };
 
 struct crt_swim_membs {
 	pthread_spinlock_t		 csm_lock;
-	D_CIRCLEQ_HEAD(, crt_swim_target) csm_head;
+	D_CIRCLEQ_HEAD(, crt_swim_target) csm_head;  // 全部成员的链表
 	struct crt_swim_target		*csm_target;
 	struct swim_context		*csm_ctx;
 	uint64_t			 csm_incarnation;
 	uint64_t			 csm_last_unpack_hlc;
-	uint64_t			 csm_alive_count;
+	uint64_t			 csm_alive_count;		// 处于alive状态的rank数量
 	int				 csm_crt_ctx_idx;
-	int				 csm_nglitches;
+	int				 csm_nglitches;  // 网络时延超过最大值的次数
 	int				 csm_nmessages;
 };
 

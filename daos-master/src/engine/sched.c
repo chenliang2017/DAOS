@@ -1036,6 +1036,9 @@ sched_req_sleep(struct sched_request *req, uint32_t msecs)
 	D_ASSERT(req->sr_ult != ABT_THREAD_NULL);
 	req->sr_wakeup_time = info->si_cur_ts + msecs;
 
+    // si_sleep_list采用升序排列, 双向链表
+    // 离si_sleep_list近的节点睡眠等待时间小, 以后节点逐渐变大
+    // si_sleep_list -> 20 -> 30 -> 40 -> 100 
 	D_ASSERT(d_list_empty(&req->sr_link));
 	/* Sleep list is sorted in wakeup time ascending order */
 	d_list_for_each_entry_reverse(tmp, &info->si_sleep_list, sr_link) {
@@ -1114,7 +1117,7 @@ wakeup_all(struct dss_xstream *dx)
 	uint64_t		 cur_ts;
 
 	/* Update current ts stored in sched_info */
-	cur_ts = daos_getmtime_coarse();
+	cur_ts = daos_getmtime_coarse();  // 相对时间, 精度是秒
 	if (cur_ts < info->si_cur_ts) {
 		D_WARN("Backwards time: cur_ts:"DF_U64", si_cur_ts:"DF_U64"\n",
 		       cur_ts, info->si_cur_ts);
@@ -1125,9 +1128,10 @@ wakeup_all(struct dss_xstream *dx)
 
 	d_list_for_each_entry_safe(req, tmp, &info->si_sleep_list, sr_link) {
 		D_ASSERT(req->sr_wakeup_time > 0);
-		if (!info->si_stop && req->sr_wakeup_time > info->si_cur_ts)
+		if (!info->si_stop && req->sr_wakeup_time > info->si_cur_ts)  // 后面的任务定时还没到
 			break;
 
+        // 定时已经到的任务再次执行
 		if (!should_enqueue_req(dx, &req->sr_attr)) {
 			req_wakeup_internal(dx, req);
 		} else {
@@ -1465,7 +1469,7 @@ static void
 sched_try_relax(struct dss_xstream *dx, ABT_pool *pools, uint32_t running)
 {
 	struct sched_info	*info = &dx->dx_sched_info;
-	unsigned int		 sleep_time = sched_relax_intvl;
+	unsigned int		 sleep_time = sched_relax_intvl;  // 1ms
 	size_t			 blocked;
 	int			 ret;
 
@@ -1539,9 +1543,10 @@ sched_try_relax(struct dss_xstream *dx, ABT_pool *pools, uint32_t running)
 	 * Wait on external network request if the xstream has Cart context,
 	 * otherwise, sleep for a while.
 	 */
+	// sched_relax_mode 值为0 
 	if (sched_relax_mode != SCHED_RELAX_MODE_SLEEP && dx->dx_comm) {
 		/* convert to micro-seconds */
-		dx->dx_timeout = sleep_time * 1000;
+		dx->dx_timeout = sleep_time * 1000;  // 1000us
 	} else {
 		ret = usleep(sleep_time * 1000);
 		if (ret)
