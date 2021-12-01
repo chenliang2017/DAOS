@@ -619,6 +619,7 @@ struct {								\
 	(head)->cqh_last  = (void *)(head);				\
 } while (0)
 
+// ele插入到listelm节点的后面
 #define	D_CIRCLEQ_INSERT_AFTER(head, listelm, elm, field) do {		\
 	(elm)->field.cqe_next = (listelm)->field.cqe_next;		\
 	(elm)->field.cqe_prev = (listelm);				\
@@ -639,6 +640,7 @@ struct {								\
 	(listelm)->field.cqe_prev = (elm);				\
 } while (0)
 
+// 插入到链表头head后面
 #define	D_CIRCLEQ_INSERT_HEAD(head, elm, field) do {			\
 	(elm)->field.cqe_next = (head)->cqh_first;			\
 	(elm)->field.cqe_prev = (void *)(head);				\
@@ -722,6 +724,7 @@ struct {								\
  * The macro CIRCLEQ_LOOP_NEXT() returns the element after the element elm.
  * If elm was the last element in the queue, the first element is returned.
  */
+ // 找循环链表中elm的下一次元素
 #define D_CIRCLEQ_LOOP_NEXT(head, elm, field)				\
 	(((elm)->field.cqe_next == (void *)(head))			\
 	    ? ((head)->cqh_first)					\

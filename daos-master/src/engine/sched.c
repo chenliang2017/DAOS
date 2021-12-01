@@ -1469,7 +1469,7 @@ static void
 sched_try_relax(struct dss_xstream *dx, ABT_pool *pools, uint32_t running)
 {
 	struct sched_info	*info = &dx->dx_sched_info;
-	unsigned int		 sleep_time = sched_relax_intvl;  // 1ms
+	unsigned int		 sleep_time = sched_relax_intvl;  // 1
 	size_t			 blocked;
 	int			 ret;
 
@@ -1543,7 +1543,7 @@ sched_try_relax(struct dss_xstream *dx, ABT_pool *pools, uint32_t running)
 	 * Wait on external network request if the xstream has Cart context,
 	 * otherwise, sleep for a while.
 	 */
-	// sched_relax_mode 值为0 
+	// sched_relax_mode 值为0(SCHED_RELAX_MODE_NET) 
 	if (sched_relax_mode != SCHED_RELAX_MODE_SLEEP && dx->dx_comm) {
 		/* convert to micro-seconds */
 		dx->dx_timeout = sleep_time * 1000;  // 1000us

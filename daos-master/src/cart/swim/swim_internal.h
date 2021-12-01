@@ -73,7 +73,7 @@ enum swim_context_state {
 
 struct swim_item {
 	TAILQ_ENTRY(swim_item)	 si_link;    // 用来串联整个链表的, 展开为结构体, 内涵两个指针：指向前一个和后一个
-	swim_id_t		 si_id;       		 // rank的id
+	swim_id_t		 si_id;       		 // 要查询的rank
 	swim_id_t		 si_from;     		 // 这个字段感觉是哪个rank最先发现这个si_id有问题, 就填哪个rank的id
 	void			*si_args;
 	union {
@@ -89,14 +89,14 @@ struct swim_context {
 	void				*sc_data;	/**< private data */
 	struct swim_ops		*sc_ops;    // siwm支持的函数集
 
-	TAILQ_HEAD(, swim_item)	 sc_subgroup;  // 远端rank的集合
+	TAILQ_HEAD(, swim_item)	 sc_subgroup;  // iping的rank集合
 	TAILQ_HEAD(, swim_item)	 sc_suspects;  // 可能出问题的rank集合, 链表形式维护
-	TAILQ_HEAD(, swim_item)	 sc_updates;   // 
-	TAILQ_HEAD(, swim_item)	 sc_ipings;    // iping的rank集合
+	TAILQ_HEAD(, swim_item)	 sc_updates;   // ping过我和我ping过的rank的集合
+	TAILQ_HEAD(, swim_item)	 sc_ipings;    // 本节点iping的rank集合
 
 	enum swim_context_state	 sc_state;
 	swim_id_t		 sc_target;            // 本节点dping的rank的id
-	swim_id_t		 sc_self;
+	swim_id_t		 sc_self;			   // 自己的rank值
 
 	uint64_t		 sc_default_ping_timeout;
 	uint64_t		 sc_expect_progress_time;   // 期望的执行时间? 这玩意是定时器吗？

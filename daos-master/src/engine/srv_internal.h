@@ -160,7 +160,7 @@ static inline char *
 sched_relax_mode2str(enum sched_cpu_relax_mode mode)
 {
 	switch (mode) {
-	case SCHED_RELAX_MODE_NET:
+	case SCHED_RELAX_MODE_NET:  // 使用
 		return "net";
 	case SCHED_RELAX_MODE_SLEEP:
 		return "sleep";

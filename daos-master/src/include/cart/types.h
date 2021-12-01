@@ -105,7 +105,7 @@ typedef struct crt_group {
 typedef struct {
 	/** group handle, NULL means the primary group */
 	crt_group_t	*ep_grp;
-	/** rank number within the group */
+	/** rank number within the group, 远端接收消息的rank的id号, dping或者iping消息的接收者 */
 	d_rank_t	 ep_rank;
 	/** tag, now used as the context ID of the target rank */
 	uint32_t	 ep_tag;

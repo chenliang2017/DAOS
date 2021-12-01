@@ -139,14 +139,14 @@ swim_updates_prepare(struct swim_context *ctx, swim_id_t id, swim_id_t to,
 	if (id != to) 				// 再加上发送的节点
 		nupds++; /* to */
 
-	D_ALLOC_ARRAY(upds, nupds);
+	D_ALLOC_ARRAY(upds, nupds);  // 申请空间
 	if (upds == NULL)
 		D_GOTO(out, rc = -DER_NOMEM);
 
 	swim_ctx_lock(ctx);
 
     // 第一个槽位填写待查询rank的状态
-	rc = ctx->sc_ops->get_member_state(ctx, id, &upds[n].smu_state);  // 获取状态
+	rc = ctx->sc_ops->get_member_state(ctx, id, &upds[n].smu_state);  // 获取rank的状态
 	if (rc) {
 		if (rc == -DER_NONEXIST)
 			SWIM_INFO("%lu: not bootstrapped yet with %lu\n", self_id, id);
@@ -154,7 +154,7 @@ swim_updates_prepare(struct swim_context *ctx, swim_id_t id, swim_id_t to,
 			SWIM_ERROR("get_member_state(%lu): "DF_RC"\n", id, DP_RC(rc));
 		D_GOTO(out_unlock, rc);
 	}
-	upds[n++].smu_id = id;
+	upds[n++].smu_id = id;  // rank的id
 
     // 第二个槽位填本节点的状态
 	if (id != self_id) {
@@ -183,11 +183,15 @@ swim_updates_prepare(struct swim_context *ctx, swim_id_t id, swim_id_t to,
 	}
 
     // 遍历查询所有的sc_updates中的成员
+    // sc_updates存放的是ping过我和我ping过的rank集合
 	item = TAILQ_FIRST(&ctx->sc_updates);
 	while (item != NULL) {
 		next = TAILQ_NEXT(item, si_link);
 
 		/* delete entries that are too many */
+		// sc_updates中缓存了太多了rank了, 就删除掉尾巴上的一些rank
+		// 往sc_updates中插入的时候总是插入在头部
+		// 所以这里尾巴删掉的是老旧的数据(LRU)
 		if (n >= nupds) {
 			TAILQ_REMOVE(&ctx->sc_updates, item, si_link);
 			D_FREE(item);
@@ -218,6 +222,7 @@ swim_updates_prepare(struct swim_context *ctx, swim_id_t id, swim_id_t to,
 			upds[n++].smu_id = item->si_id;
 		}
 
+		// 每个item往外扩散50次后就从链表中删除掉
 		if (++item->u.si_count > ctx->sc_piggyback_tx_max) {
 			TAILQ_REMOVE(&ctx->sc_updates, item, si_link);
 			D_FREE(item);
@@ -242,7 +247,7 @@ out:
 }
 
 int
-swim_updates_send(struct swim_context *ctx, swim_id_t id, swim_id_t to)
+swim_updates_send(struct swim_context *ctx, swim_id_t id/*想要查询状态的远端rank*/, swim_id_t to/*本消息发送的远端rank*/)
 {
 	struct swim_member_update	*upds;
 	size_t				         nupds;  // upds数组的大小
@@ -435,8 +440,8 @@ search:
 	D_ALLOC_PTR(item);
 	if (item == NULL)
 		D_GOTO(out, rc = -DER_NOMEM);
-	item->si_id   = id;
-	item->si_from = from;
+	item->si_id   = id;    // 被认为异常的rank
+	item->si_from = from;  // 发起者, 认为id的rank有异常
 	item->u.si_deadline = swim_now_ms() + swim_suspect_timeout_get();
 	TAILQ_INSERT_TAIL(&ctx->sc_suspects, item, si_link);  // 插入suspect链表
 
@@ -467,7 +472,7 @@ swim_member_update_suspected(struct swim_context *ctx, uint64_t now/*当前时�
 	while (item != NULL) {
 		next = TAILQ_NEXT(item, si_link);   // sc_suspects链表中下一个元素的指针
 		item->u.si_deadline += net_glitch_delay;  // 由于调度有漂移, deadline也向后移动
-		if (now > item->u.si_deadline) {    // 当前时间比deadline要大, 表示deadline已经超期了
+		if (now > item->u.si_deadline) {    // 当前时间比deadline要大, 表示deadline已经超期了, 这个超时时间为8秒
 			rc = ctx->sc_ops->get_member_state(ctx,
 							   item->si_id,
 							   &id_state);  // 获取rank的状态
@@ -481,8 +486,8 @@ swim_member_update_suspected(struct swim_context *ctx, uint64_t now/*当前时�
 			SWIM_INFO("%lu: suspect timeout %lu\n",
 				  self_id, item->si_id);
 			if (item->si_from != self_id) {		// 不是本节点首先发现的, 构造item加到targets中，下面会将targets中的东西发出去
-				/* let's try to confirm from gossip origin */
-				id      = item->si_id;
+				/* let's try to confirm from gossip origin */  // 本节点的suspect状态是其他节点同步过来的，谁同步过来的，我就告诉说
+				id      = item->si_id;          // 这个suspect的rank已经超时了，让最开始发现这个rank异常的发现者去处理
 				from_id = item->si_from;
 
 				item->si_from = self_id;
@@ -592,11 +597,11 @@ swim_ipings_reply(struct swim_context *ctx, swim_id_t to_id, int ret_rc)
 	TAILQ_INIT(&targets);
 
 	swim_ctx_lock(ctx);
-	item = TAILQ_FIRST(&ctx->sc_ipings);
+	item = TAILQ_FIRST(&ctx->sc_ipings);  // iping列表中包含to_id
 	while (item != NULL) {
 		next = TAILQ_NEXT(item, si_link);
 		if (item->si_id == to_id) {
-			TAILQ_REMOVE(&ctx->sc_ipings, item, si_link);
+			TAILQ_REMOVE(&ctx->sc_ipings, item, si_link);  // 收到应答就删掉
 			TAILQ_INSERT_TAIL(&targets, item, si_link);
 		}
 		item = next;
@@ -640,9 +645,9 @@ swim_ipings_suspend(struct swim_context *ctx, swim_id_t from_id,
 
 	D_ALLOC_PTR(item);
 	if (item != NULL) {
-		item->si_id   = to_id;
-		item->si_from = from_id;
-		item->si_args = args;
+		item->si_id   = to_id;    // iping要查询的rank
+		item->si_from = from_id;  // 原始节点，发送iping消息的rank
+		item->si_args = args;     // 原始节点发过来消息的rpc句柄
 		item->u.si_deadline = swim_now_ms() + swim_ping_timeout_get();
 		TAILQ_INSERT_TAIL(&ctx->sc_ipings, item, si_link);
 	} else {
@@ -668,8 +673,8 @@ swim_subgroup_init(struct swim_context *ctx)
 		D_ALLOC_PTR(item);
 		if (item == NULL)
 			D_GOTO(out, rc = -DER_NOMEM);
-		item->si_from = ctx->sc_target;
-		item->si_id   = id;
+		item->si_from = ctx->sc_target;  // 想要知道状态的远端rank
+		item->si_id   = id;  // 代替我进行dping的远端rank, 由这个rank替我dping一次sc_target
 		TAILQ_INSERT_TAIL(&ctx->sc_subgroup, item, si_link);
 	}
 out:
@@ -840,17 +845,17 @@ swim_net_glitch_update(struct swim_context *ctx, swim_id_t id, uint64_t delay)
 	/* update expire time of suspected members */
 	TAILQ_FOREACH(item, &ctx->sc_suspects, si_link) {
 		if (id == self_id || id == item->si_id)
-			item->u.si_deadline += delay;  // 超时时间加上网络时延
+			item->u.si_deadline += delay;  // 可疑队列的超时时间加上网络时延
 	}
 	/* update expire time of ipinged members */
 	TAILQ_FOREACH(item, &ctx->sc_ipings, si_link) {
 		if (id == self_id || id == item->si_id)
-			item->u.si_deadline += delay;
+			item->u.si_deadline += delay;  // iping的超时时间加上网络时延
 	}
 
 	if (id == self_id || id == ctx->sc_target) {
 		if (swim_state_get(ctx) == SCS_PINGED)
-			ctx->sc_deadline += delay;
+			ctx->sc_deadline += delay;  // dping的超时时间加上网络时延
 	}
 
 	swim_ctx_unlock(ctx);
@@ -934,7 +939,7 @@ swim_progress(struct swim_context *ctx, int64_t timeout/*值为1000*/)
 		case SCS_BEGIN:
 			if (now > ctx->sc_next_tick_time) {  // 当前时间比预期的下次执行时间大, 说明可以开始下一次执行了
 				if (TAILQ_EMPTY(&ctx->sc_subgroup)) {  // 远端rank集合不为空
-					uint64_t delay = target_state.sms_delay * 2;
+					uint64_t delay = target_state.sms_delay * 2;  // 默认的超时时间是网络收发时延的2倍(往返各一次)
 					uint64_t ping_timeout = swim_ping_timeout_get();
 
 					// 保证了delay在: 0.9 ~ 2.7
@@ -956,7 +961,7 @@ swim_progress(struct swim_context *ctx, int64_t timeout/*值为1000*/)
 					ctx->sc_deadline = now + delay;
 					if (ctx->sc_deadline < ctx->sc_next_event)
 						ctx->sc_next_event = ctx->sc_deadline;
-					ctx_state = SCS_PINGED;
+					ctx_state = SCS_PINGED;  // 切换状态
 				} else {
 					ctx_state = SCS_TIMEDOUT;
 				}
@@ -996,9 +1001,9 @@ swim_progress(struct swim_context *ctx, int64_t timeout/*值为1000*/)
 			 * kick off a set of indirect pings to a subgroup of
 			 * group members
 			 */
-			item = TAILQ_FIRST(&ctx->sc_subgroup);  // 找iping的rank
+			item = TAILQ_FIRST(&ctx->sc_subgroup);  
 			if (item == NULL) {
-				rc = swim_subgroup_init(ctx);
+				rc = swim_subgroup_init(ctx);  // 找两个iping的rank
 				if (rc) {
 					swim_ctx_unlock(ctx);
 					SWIM_ERROR("swim_subgroup_init(): "
@@ -1012,9 +1017,9 @@ swim_progress(struct swim_context *ctx, int64_t timeout/*值为1000*/)
 			if (item != NULL) {
 				struct swim_member_state state;
 
-				target_id = item->si_from;  // 代ping的对象
-				sendto_id = item->si_id;    // 远端的rank，由远端的rank取pingsi_from
-				TAILQ_REMOVE(&ctx->sc_subgroup, item, si_link);
+				target_id = item->si_from;  // 代ping的对象, 本节点想要知道状态的远端rank
+				sendto_id = item->si_id;    // 远端的rank，由这个远端的rank代替本节点进行dping, dping对象为si_from
+				TAILQ_REMOVE(&ctx->sc_subgroup, item, si_link);  // 发完就删掉了？意思每个rank只发一次iping
 				D_FREE(item);
 
 				rc = ctx->sc_ops->get_member_state(ctx, sendto_id, &state);
@@ -1023,7 +1028,8 @@ swim_progress(struct swim_context *ctx, int64_t timeout/*值为1000*/)
 						   sendto_id, DP_RC(rc));
 					goto done_item;
 				}
-
+				
+				// iping消息发往的对象要求是alive状态的rank
 				if (target_id != sendto_id) {
 					/* Send indirect ping request to ALIVE member only */
 					if (state.sms_status != SWIM_MEMBER_ALIVE)
@@ -1050,7 +1056,7 @@ swim_progress(struct swim_context *ctx, int64_t timeout/*值为1000*/)
 
 				send_updates = true;
 done_item:
-				if (TAILQ_EMPTY(&ctx->sc_subgroup)) {
+				if (TAILQ_EMPTY(&ctx->sc_subgroup)) {  // 发送两个iping对象后，就切换状态发送dping
 					/* So, just goto next member. */
 					ctx_state = SCS_SELECT;
 				}
@@ -1066,7 +1072,7 @@ done_item:
 
 			if (ctx->sc_next_tick_time < ctx->sc_next_event)
 				ctx->sc_next_event = ctx->sc_next_tick_time;
-			ctx_state = SCS_BEGIN;
+			ctx_state = SCS_BEGIN;  // 设置状态
 			break;
 		}
 
@@ -1075,7 +1081,7 @@ done_item:
 		swim_ctx_unlock(ctx);
 
 		if (send_updates) {
-			rc = swim_updates_send(ctx, target_id, sendto_id);
+			rc = swim_updates_send(ctx, target_id, sendto_id);  // 发送消息：携带的是rank的状态信息
 			if (rc) {
 				SWIM_ERROR("swim_updates_send(): "
 					   DF_RC"\n", DP_RC(rc));
@@ -1093,8 +1099,10 @@ out_err:
 	return rc;
 }
 
+// 更新本节点维护的其他rank的状态
+// 本节点自己的状态是不会修改的, 相反增加了自己状态的incarnation
 int
-swim_updates_parse(struct swim_context *ctx, swim_id_t from_id,
+swim_updates_parse(struct swim_context *ctx, swim_id_t from_id/*发送消息的对端rank的id*/,
 		   struct swim_member_update *upds, size_t nupds)
 {
 	enum swim_context_state ctx_state;
@@ -1112,7 +1120,7 @@ swim_updates_parse(struct swim_context *ctx, swim_id_t from_id,
 	swim_ctx_lock(ctx);
 	ctx_state = swim_state_get(ctx);
 
-	if (from_id == ctx->sc_target &&
+	if (from_id == ctx->sc_target &&  // dping的消息解析
 	    (ctx_state == SCS_BEGIN || ctx_state == SCS_PINGED))
 		ctx_state = SCS_SELECT;
 
@@ -1170,7 +1178,7 @@ swim_updates_parse(struct swim_context *ctx, swim_id_t from_id,
 
 				ctx->sc_ops->new_incarnation(ctx, self_id, &self_state);
 				rc = swim_updates_notify(ctx, self_id, self_id,
-							 &self_state, 0);
+							 &self_state, 0);  // 更新自己的incarnation
 				if (rc) {
 					swim_ctx_unlock(ctx);
 					SWIM_ERROR("swim_updates_notify(): "
@@ -1180,6 +1188,7 @@ swim_updates_parse(struct swim_context *ctx, swim_id_t from_id,
 				break;
 			}
 
+			// 更新其他rank的状态
 			if (upds[i].smu_state.sms_status == SWIM_MEMBER_SUSPECT)
 				swim_member_suspect(ctx, from_id, id,
 					     upds[i].smu_state.sms_incarnation);  // 标记suspect

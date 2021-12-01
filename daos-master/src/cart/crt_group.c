@@ -2517,8 +2517,8 @@ crt_rank_self_set(d_rank_t rank)
 	}
 
 	D_RWLOCK_WRLOCK(&default_grp_priv->gp_rwlock);
-	default_grp_priv->gp_self = rank;
-	rc = grp_add_to_membs_list(default_grp_priv, rank);
+	default_grp_priv->gp_self = rank;  // 自己的rank值
+	rc = grp_add_to_membs_list(default_grp_priv, rank);  // 添加到rank列表中
 	D_RWLOCK_UNLOCK(&default_grp_priv->gp_rwlock);
 
 	if (rc != 0) {

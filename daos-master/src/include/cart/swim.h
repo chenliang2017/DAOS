@@ -42,8 +42,8 @@ struct swim_member_state {
 };
 
 struct swim_member_update {
-	uint64_t		 smu_id;
-	struct swim_member_state smu_state;
+	uint64_t		 		 smu_id;		// rank的id
+	struct swim_member_state smu_state;		// rank的信息
 };
 
 /** opaque SWIM context type */

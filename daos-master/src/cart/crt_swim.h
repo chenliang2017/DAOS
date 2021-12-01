@@ -28,7 +28,7 @@ struct crt_swim_target {
 struct crt_swim_membs {
 	pthread_spinlock_t		 csm_lock;
 	D_CIRCLEQ_HEAD(, crt_swim_target) csm_head;  // 全部成员的链表
-	struct crt_swim_target		*csm_target;
+	struct crt_swim_target		*csm_target;	// 哨兵, dping或者iping对象为哨兵的下一个对象
 	struct swim_context		*csm_ctx;
 	uint64_t			 csm_incarnation;
 	uint64_t			 csm_last_unpack_hlc;
