@@ -1438,13 +1438,12 @@ void ABTI_pool_free(ABTI_pool *p_pool)
     ABTU_free(p_pool);
 }
 
-// 该接口受时间跳变影响, 且无法在内部进行修改
-ABT_thread ABTI_pool_pop_timedwait(ABTI_pool *p_pool, double abstime_secs/*距1970-01-01 00:00:00以来的秒数*/)
+ABT_thread ABTI_pool_pop_timedwait(ABTI_pool *p_pool, double abstime_secs)
 {
     ABTI_UB_ASSERT(p_pool->deprecated_def.p_pop_timedwait);
     ABT_unit unit =
         p_pool->deprecated_def.p_pop_timedwait(ABTI_pool_get_handle(p_pool),
-                                               abstime_secs);  // fifo/fifo_wait/randws
+                                               abstime_secs);
     if (unit == ABT_UNIT_NULL) {
         return ABT_THREAD_NULL;
     } else {

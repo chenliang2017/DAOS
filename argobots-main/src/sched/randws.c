@@ -14,7 +14,7 @@ static int sched_free(ABT_sched);
 static ABT_sched_def sched_randws_def = {
     .type = ABT_SCHED_TYPE_ULT,
     .init = sched_init,
-    .run = sched_run,
+    .run  = sched_run,
     .free = sched_free,
     .get_migr_pool = NULL,
 };
@@ -23,7 +23,7 @@ typedef struct {
     uint32_t event_freq;
     int num_pools;
     ABT_pool *pools;
-#ifdef ABT_CONFIG_USE_SCHED_SLEEP
+#ifdef ABT_CONFIG_USE_SCHED_SLEEP  // 宏默认关闭
     struct timespec sleep_time;
 #endif
 } sched_data;
@@ -47,7 +47,7 @@ static int sched_init(ABT_sched sched, ABT_sched_config config)
     sched_data *p_data;
     abt_errno = ABTU_malloc(sizeof(sched_data), (void **)&p_data);
     ABTI_CHECK_ERROR(abt_errno);
-#ifdef ABT_CONFIG_USE_SCHED_SLEEP
+#ifdef ABT_CONFIG_USE_SCHED_SLEEP  // 宏默认关闭
     p_data->sleep_time.tv_sec = 0;
     p_data->sleep_time.tv_nsec = p_global->sched_sleep_nsec;
 #endif
@@ -65,8 +65,8 @@ static int sched_init(ABT_sched sched, ABT_sched_config config)
     }
 
     /* Save the list of pools */
-    num_pools = p_sched->num_pools;
-    p_data->num_pools = num_pools;
+    num_pools = p_sched->num_pools;  // 调度器绑定的池数量
+    p_data->num_pools = num_pools;	 // 调度器绑定的所有池
     abt_errno =
         ABTU_malloc(num_pools * sizeof(ABT_pool), (void **)&p_data->pools);
     if (ABTI_IS_ERROR_CHECK_ENABLED && abt_errno != ABT_SUCCESS) {
@@ -103,21 +103,22 @@ static void sched_run(ABT_sched sched)
         CNT_INIT(run_cnt, 0);
 
         /* Execute one work unit from the scheduler's pool */
+		// 首先从pool0尝试弹出任务
         ABT_pool pool = pools[0];
         ABTI_pool *p_pool = ABTI_pool_get_ptr(pool);
         ABT_thread thread =
-            ABTI_pool_pop(p_pool, ABT_POOL_CONTEXT_OWNER_PRIMARY);
+            ABTI_pool_pop(p_pool, ABT_POOL_CONTEXT_OWNER_PRIMARY);  // 弹出一个任务
         if (thread != ABT_THREAD_NULL) {
             ABTI_thread *p_thread = ABTI_thread_get_ptr(thread);
-            ABTI_ythread_schedule(p_global, &p_local_xstream, p_thread);
+            ABTI_ythread_schedule(p_global, &p_local_xstream, p_thread);  // 执行任务
             CNT_INC(run_cnt);
         } else if (num_pools > 1) {
             /* Steal a work unit from other pools */
             target =
-                (num_pools == 2) ? 1 : (rand_r(&seed) % (num_pools - 1) + 1);
+                (num_pools == 2) ? 1 : (rand_r(&seed) % (num_pools - 1) + 1);  // 随机找一个后续的池
             pool = pools[target];
             p_pool = ABTI_pool_get_ptr(pool);
-            thread = ABTI_pool_pop(p_pool, ABT_POOL_CONTEXT_OWNER_SECONDARY);
+            thread = ABTI_pool_pop(p_pool, ABT_POOL_CONTEXT_OWNER_SECONDARY);   // 弹出一个任务
             if (thread != ABT_THREAD_NULL) {
                 ABTI_thread *p_thread = ABTI_thread_get_ptr(thread);
                 ABTI_ythread_schedule(p_global, &p_local_xstream, p_thread);
@@ -125,12 +126,13 @@ static void sched_run(ABT_sched sched)
             }
         }
 
+		// 执行次数超限制
         if (++work_count >= p_data->event_freq) {
-            ABTI_xstream_check_events(p_local_xstream, p_sched);
+            ABTI_xstream_check_events(p_local_xstream, p_sched);  // 检查状态
             if (ABTI_sched_has_to_stop(p_sched) == ABT_TRUE)
                 break;
             work_count = 0;
-            SCHED_SLEEP(run_cnt, p_data->sleep_time);
+            SCHED_SLEEP(run_cnt, p_data->sleep_time);  // 睡眠等待
         }
     }
 }

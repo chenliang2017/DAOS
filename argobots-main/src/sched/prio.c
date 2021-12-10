@@ -13,7 +13,7 @@ static int sched_free(ABT_sched);
 
 static ABT_sched_def sched_prio_def = { .type = ABT_SCHED_TYPE_ULT,
                                         .init = sched_init,
-                                        .run = sched_run,
+                                        .run  = sched_run,
                                         .free = sched_free,
                                         .get_migr_pool = NULL };
 
@@ -21,8 +21,8 @@ typedef struct {
     uint32_t event_freq;
     int num_pools;
     ABT_pool *pools;
-#ifdef ABT_CONFIG_USE_SCHED_SLEEP
-    struct timespec sleep_time;
+#ifdef ABT_CONFIG_USE_SCHED_SLEEP   // 宏默认没开启
+    struct timespec sleep_time;		// 睡眠时间参数
 #endif
 } sched_data;
 
@@ -50,7 +50,7 @@ static int sched_init(ABT_sched sched, ABT_sched_config config)
     sched_data *p_data;
     abt_errno = ABTU_malloc(sizeof(sched_data), (void **)&p_data);
     ABTI_CHECK_ERROR(abt_errno);
-#ifdef ABT_CONFIG_USE_SCHED_SLEEP
+#ifdef ABT_CONFIG_USE_SCHED_SLEEP  // 宏默认关闭
     p_data->sleep_time.tv_sec = 0;
     p_data->sleep_time.tv_nsec = p_global->sched_sleep_nsec;
 #endif
@@ -68,8 +68,8 @@ static int sched_init(ABT_sched sched, ABT_sched_config config)
     }
 
     /* Save the list of pools */
-    num_pools = p_sched->num_pools;
-    p_data->num_pools = num_pools;
+    num_pools = p_sched->num_pools;	// 调度器绑定的池数量
+    p_data->num_pools = num_pools;	// 调度器绑定的所有池
     abt_errno =
         ABTU_malloc(num_pools * sizeof(ABT_pool), (void **)&p_data->pools);
     if (ABTI_IS_ERROR_CHECK_ENABLED && abt_errno != ABT_SUCCESS) {
@@ -108,25 +108,27 @@ static void sched_run(ABT_sched sched)
 
         /* Execute one work unit from the scheduler's pool */
         /* The pool with lower index has higher priority. */
+		// 按池的序号来执行了, 序号小的池, 优先执行
         for (i = 0; i < num_pools; i++) {
             ABT_pool pool = pools[i];
             ABTI_pool *p_pool = ABTI_pool_get_ptr(pool);
             ABT_thread thread =
-                ABTI_pool_pop(p_pool, ABT_POOL_CONTEXT_OP_POOL_OTHER);
-            if (thread != ABT_THREAD_NULL) {
+                ABTI_pool_pop(p_pool, ABT_POOL_CONTEXT_OP_POOL_OTHER);  // 从池里弹出一个任务, 从池的头部弹出任务, 默认就是先入先出, 不会等待, 没有任务时直接返回
+            if (thread != ABT_THREAD_NULL) {  // 找到了任务
                 ABTI_thread *p_thread = ABTI_thread_get_ptr(thread);
-                ABTI_ythread_schedule(p_global, &p_local_xstream, p_thread);
+                ABTI_ythread_schedule(p_global, &p_local_xstream, p_thread);  // 执行任务
                 CNT_INC(run_cnt);
-                break;
+                break;  // 跳过这个pool, 下次进来时还是从pool[0]开始; 如果pool0一直有任务的话, 其他池就不能得到执行了, 有问题！！！
             }
         }
 
+		// 连续执行的任务数超过了限制
         if (++work_count >= event_freq) {
-            ABTI_xstream_check_events(p_local_xstream, p_sched);
+            ABTI_xstream_check_events(p_local_xstream, p_sched);  // 检查一下调度器绑定的ES是否已经退出了
             if (ABTI_sched_has_to_stop(p_sched) == ABT_TRUE)
                 break;
             work_count = 0;
-            SCHED_SLEEP(run_cnt, p_data->sleep_time);
+            SCHED_SLEEP(run_cnt, p_data->sleep_time);  // 睡眠, 让出cpu
         }
     }
 }

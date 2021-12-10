@@ -600,7 +600,7 @@ int ABT_sched_get_data(ABT_sched sched, void **data)
  * @param[out] size   sum of sizes of pools associated with \c sched
  * @return Error code
  */
-int ABT_sched_get_size(ABT_sched sched, size_t *size)
+int ABT_sched_get_size(ABT_sched sched, size_t *size)  // 获取调度器当前绑定的任务数量
 {
     ABTI_UB_ASSERT(ABTI_initialized());
     ABTI_UB_ASSERT(size);
@@ -665,7 +665,7 @@ int ABT_sched_get_size(ABT_sched sched, size_t *size)
  * @param[out] size   sum of the total sizes of pools associated with \c sched
  * @return Error code
  */
-int ABT_sched_get_total_size(ABT_sched sched, size_t *size)
+int ABT_sched_get_total_size(ABT_sched sched, size_t *size)  // 排队的任务 + 阻塞的任务 总数
 {
     ABTI_UB_ASSERT(ABTI_initialized());
     ABTI_UB_ASSERT(size);
@@ -734,7 +734,7 @@ ABTU_ret_err int ABTI_sched_create_basic(ABT_sched_predef predef, int num_pools,
                     ABTI_pool *p_newpool;
                     abt_errno =
                         ABTI_pool_create_basic(ABT_POOL_FIFO, def_access,
-                                               ABT_TRUE, &p_newpool);
+                                               ABT_TRUE, &p_newpool);  // 创建一个先入先出池
                     if (ABTI_IS_ERROR_CHECK_ENABLED &&
                         abt_errno != ABT_SUCCESS) {
                         /* Remove pools that are already created. */

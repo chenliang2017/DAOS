@@ -13,15 +13,15 @@ static void sched_sort_pools(int num_pools, ABT_pool *pools);
 static ABT_sched_def sched_basic_wait_def = {
     .type = ABT_SCHED_TYPE_ULT,
     .init = sched_init,
-    .run = sched_run,
+    .run  = sched_run,
     .free = sched_free,
     .get_migr_pool = NULL,
 };
 
 typedef struct {
-    uint32_t event_freq;
-    int num_pools;
-    ABT_pool *pools;
+    uint32_t event_freq;	//
+    int num_pools;			// 调度器绑定的池数量
+    ABT_pool *pools;		// 调度器绑定的所有的池
 } sched_data;
 
 ABT_sched_def *ABTI_sched_get_basic_wait_def(void)
@@ -62,8 +62,8 @@ static int sched_init(ABT_sched sched, ABT_sched_config config)
     }
 
     /* Save the list of pools */
-    num_pools = p_sched->num_pools;
-    p_data->num_pools = num_pools;
+    num_pools = p_sched->num_pools;  // 绑定的池数
+    p_data->num_pools = num_pools;	 // 绑定的所有池
     abt_errno =
         ABTU_malloc(num_pools * sizeof(ABT_pool), (void **)&p_data->pools);
     if (ABTI_IS_ERROR_CHECK_ENABLED && abt_errno != ABT_SUCCESS) {
@@ -107,39 +107,43 @@ static void sched_run(ABT_sched sched)
         run_cnt_nowait = 0;
 
         /* Execute one work unit from the scheduler's pool */
+		// 遍历调度器绑定的所有的pool
+		// 池的顺序：单一出队和入队、单一出队、单一入队
+		// 理由：尽量最小化不同ES的竞争
         for (i = 0; i < num_pools; i++) {
             ABT_pool pool = pools[i];
             ABTI_pool *p_pool = ABTI_pool_get_ptr(pool);
             /* Pop one work unit */
             ABT_thread thread =
-                ABTI_pool_pop(p_pool, ABT_POOL_CONTEXT_OP_POOL_OTHER);
-            if (thread != ABT_THREAD_NULL) {
+                ABTI_pool_pop(p_pool, ABT_POOL_CONTEXT_OP_POOL_OTHER);  // 从池里弹出一个待执行的任务(默认是从池的任务头部弹出任务, 也就是先入先出)
+            if (thread != ABT_THREAD_NULL) {  // 取到了任务							池里没有任务时直接返回, 不会等待
                 ABTI_thread *p_thread = ABTI_thread_get_ptr(thread);
-                ABTI_ythread_schedule(p_global, &p_local_xstream, p_thread);
+                ABTI_ythread_schedule(p_global, &p_local_xstream, p_thread);  // 调度执行
                 run_cnt_nowait++;
-                break;
-            }
+                break;  // 执行一个任务后就跳出了对pool的循环 ---> 每次只执行一个pool中的任务
+            }   // 下次执行的时候换一个池继续判断是否有任务待执行, 下一次执行还是跳到pool0, 如果pool0一直有任务, 会导致其他池的任务饿死
         }
 
         /* Block briefly on pop_wait() if we didn't find work to do in main loop
          * above. */
+        // 本轮没有执行到任务, 说明池中没有任务待执行 
         if (!run_cnt_nowait) {
             ABTI_pool *p_pool = ABTI_pool_get_ptr(pools[0]);
             ABT_thread thread;
-            if (p_pool->optional_def.p_pop_wait) {  // 目前都有定义p_pop_wait, 所以会走此分支
-                thread = ABTI_pool_pop_wait(p_pool, 0.1,
-                                            ABT_POOL_CONTEXT_OP_POOL_OTHER);
-            } else if (p_pool->deprecated_def.p_pop_timedwait) {
+            if (p_pool->optional_def.p_pop_wait) {  // 如果池定义了p_pop_wait接口
+                thread = ABTI_pool_pop_wait(p_pool, 0.1/*等待时间为0.1秒*/,
+                                            ABT_POOL_CONTEXT_OP_POOL_OTHER);  // 睡眠等待任务
+            } else if (p_pool->deprecated_def.p_pop_timedwait) {  // 如果池定义了p_pop_timedwait接口
                 thread =
-                    ABTI_pool_pop_timedwait(p_pool, ABTI_get_wtime() + 0.1);  // 这里受时间跳变影响，且无法修改
+                    ABTI_pool_pop_timedwait(p_pool, ABTI_get_wtime() + 0.1);  // 睡眠等待任务, 以将来的一个绝对时间点作为醒来的时刻
             } else {
                 /* No "wait" pop, so let's use a normal one. */
-                thread = ABTI_pool_pop(p_pool, ABT_POOL_CONTEXT_OP_POOL_OTHER);
+                thread = ABTI_pool_pop(p_pool, ABT_POOL_CONTEXT_OP_POOL_OTHER);  // 再次尝试从池中弹出一个任务
             }
-            if (thread != ABT_THREAD_NULL) {
+            if (thread != ABT_THREAD_NULL) {  // 找到了任务
                 ABTI_thread *p_thread = ABTI_thread_get_ptr(thread);
-                ABTI_ythread_schedule(p_global, &p_local_xstream, p_thread);
-                break;
+                ABTI_ythread_schedule(p_global, &p_local_xstream, p_thread);  // 调度执行
+                break;  // 继续下一次循环
             }
         }
 
@@ -147,8 +151,8 @@ static void sched_run(ABT_sched sched)
          * first pass through pools and we must have called pop_wait above.  We
          * should check events regardless of work_count in that case for them to
          * be processed in a timely manner. */
-        if (!run_cnt_nowait || (++work_count >= event_freq)) {
-            ABTI_xstream_check_events(p_local_xstream, p_sched);
+        if (!run_cnt_nowait/*没有任务执行*/ || (++work_count >= event_freq)/*执行次数超限制了*/) {
+            ABTI_xstream_check_events(p_local_xstream, p_sched);  // 观察一下这个调度器关联的ES是不是已经终止了
             if (ABTI_sched_has_to_stop(p_sched) == ABT_TRUE)
                 break;
             work_count = 0;
@@ -174,14 +178,14 @@ static int pool_get_access_num(ABT_pool *p_pool)
 
     access = ABTI_pool_get_ptr(*p_pool)->access;
     switch (access) {
-        case ABT_POOL_ACCESS_PRIV:
+        case ABT_POOL_ACCESS_PRIV:		// 单一ES入队和出队
             num = 0;
             break;
-        case ABT_POOL_ACCESS_SPSC:
+        case ABT_POOL_ACCESS_SPSC:		// 单一ES出队
         case ABT_POOL_ACCESS_MPSC:
             num = 1;
             break;
-        case ABT_POOL_ACCESS_SPMC:
+        case ABT_POOL_ACCESS_SPMC:		// 单一ES入队
         case ABT_POOL_ACCESS_MPMC:
             num = 2;
             break;
@@ -193,6 +197,7 @@ static int pool_get_access_num(ABT_pool *p_pool)
     return num;
 }
 
+// 单一入队 > 单一出队 > 单一出队和入队
 static int sched_cmp_pools(const void *p1, const void *p2)
 {
     int p1_access, p2_access;
@@ -209,6 +214,7 @@ static int sched_cmp_pools(const void *p1, const void *p2)
     }
 }
 
+// 池：单一出队和入队、单一出队、单一入队
 static void sched_sort_pools(int num_pools, ABT_pool *pools)
 {
     qsort(pools, num_pools, sizeof(ABT_pool), sched_cmp_pools);

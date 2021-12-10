@@ -9,6 +9,8 @@
 #include <stdarg.h>
 #include <string.h>
 
+// 用户自定义pool的接口
+
 /** @defgroup POOL_USER_DEF  Pool definition
  * This group is for Pool definition.
  */

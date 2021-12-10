@@ -11,7 +11,7 @@
 
 #define SCHED_CONFIG_HTABLE_SIZE 8
 typedef struct {
-    ABT_sched_config_type type; /* Element type. */
+    ABT_sched_config_type type; /* Element type. 数据的类型 */
     union {
         int v_int;
         double v_double;

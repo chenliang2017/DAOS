@@ -83,7 +83,7 @@ int ABT_pool_config_create(ABT_pool_config *config)
     int abt_errno;
     ABTI_pool_config *p_config;
 
-    abt_errno = ABTU_calloc(1, sizeof(ABTI_pool_config), (void **)&p_config);
+    abt_errno = ABTU_calloc(1, sizeof(ABTI_pool_config), (void **)&p_config);  // 申请内存并初始化为0
     ABTI_CHECK_ERROR(abt_errno);
     abt_errno =
         ABTU_hashtable_create(POOL_CONFIG_HTABLE_SIZE,
@@ -93,7 +93,7 @@ int ABT_pool_config_create(ABT_pool_config *config)
         ABTI_HANDLE_ERROR(abt_errno);
     }
 
-    *config = ABTI_pool_config_get_handle(p_config);
+    *config = ABTI_pool_config_get_handle(p_config);  // 转成句柄返回出去
     return ABT_SUCCESS;
 }
 
@@ -287,6 +287,7 @@ ABTU_ret_err int ABTI_pool_config_read(const ABTI_pool_config *p_config,
 /* Internal static functions                                                 */
 /*****************************************************************************/
 
+// 整型
 static void pool_config_create_element_int(pool_config_element *p_elem, int val)
 {
     memset(p_elem, 0, sizeof(pool_config_element));
@@ -294,6 +295,7 @@ static void pool_config_create_element_int(pool_config_element *p_elem, int val)
     p_elem->val.v_int = val;
 }
 
+// 字符型
 static void pool_config_create_element_double(pool_config_element *p_elem,
                                               double val)
 {
@@ -302,6 +304,7 @@ static void pool_config_create_element_double(pool_config_element *p_elem,
     p_elem->val.v_double = val;
 }
 
+// 指针
 static void pool_config_create_element_ptr(pool_config_element *p_elem,
                                            void *ptr)
 {

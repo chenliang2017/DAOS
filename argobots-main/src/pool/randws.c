@@ -227,7 +227,7 @@ static ABT_thread pool_pop_wait(ABT_pool pool, double time_secs,
     double time_start = 0.0;
     while (1) {
         if (thread_queue_acquire_spinlock_if_not_empty(&p_data->queue,
-                                                       &p_data->mutex) == 0) {  //不为空，有数据直接返回数据
+                                                       &p_data->mutex) == 0) {
             ABTI_thread *p_thread;
             if (context & POOL_CONTEXT_POP_TAIL) {
                 p_thread = thread_queue_pop_tail(&p_data->queue);
@@ -241,7 +241,7 @@ static ABT_thread pool_pop_wait(ABT_pool pool, double time_secs,
         if (time_start == 0.0) {
             time_start = ABTI_get_wtime();
         } else {
-            double elapsed = ABTI_get_wtime() - time_start;  // 函数已经等待的时间
+            double elapsed = ABTI_get_wtime() - time_start;
             if (elapsed > time_secs)
                 return ABT_THREAD_NULL;
         }
@@ -269,7 +269,7 @@ static ABT_unit pool_pop_timedwait(ABT_pool pool, double abstime_secs)
         struct timespec ts = { 0, sleep_nsecs };
         nanosleep(&ts, NULL);
 
-        if (ABTI_get_wtime() > abstime_secs)  // 绝对时间已经超过了要求的值
+        if (ABTI_get_wtime() > abstime_secs)
             return ABT_UNIT_NULL;
     }
 }

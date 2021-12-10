@@ -8,14 +8,15 @@
 
 #include "abti.h"
 
+// 工作单元队列
 /* Generic queue implementation for work units. */
 typedef struct {
-    size_t num_threads;
-    ABTI_thread *p_head;
-    ABTI_thread *p_tail;
+    size_t num_threads;		// 队列中ABTI_thread的数量
+    ABTI_thread *p_head;    // 双向链表的头部
+    ABTI_thread *p_tail;	// 双向链表的尾部
     /* If the pool is empty, pop() accesses only is_empty so that pop() does not
      * slow down a push operation. */
-    ABTD_atomic_int is_empty; /* Whether the pool is empty or not. */
+    ABTD_atomic_int is_empty; /* Whether the pool is empty or not. 工作队列是否为空 */
 } thread_queue_t;
 
 static inline void thread_queue_init(thread_queue_t *p_queue)
@@ -23,7 +24,7 @@ static inline void thread_queue_init(thread_queue_t *p_queue)
     p_queue->num_threads = 0;
     p_queue->p_head = NULL;
     p_queue->p_tail = NULL;
-    ABTD_atomic_relaxed_store_int(&p_queue->is_empty, 1);
+    ABTD_atomic_relaxed_store_int(&p_queue->is_empty, 1);  // 置空
 }
 
 static inline void thread_queue_free(thread_queue_t *p_queue)
@@ -31,41 +32,52 @@ static inline void thread_queue_free(thread_queue_t *p_queue)
     ; /* Do nothing. */
 }
 
+// p_queue不为空的情况下, 自旋尝试拿锁
+// 拿锁成功时返回0, 失败时返回1
 ABTU_ret_err static inline int
 thread_queue_acquire_spinlock_if_not_empty(thread_queue_t *p_queue,
                                            ABTD_spinlock *p_lock)
 {
-    if (ABTD_atomic_acquire_load_int(&p_queue->is_empty)) {
+    // 判断队列是否为空
+    if (ABTD_atomic_acquire_load_int(&p_queue->is_empty)) {  // 队列为空
         /* The pool is empty.  Lock is not taken. */
-        return 1;
+        return 1; // 队列为空, 直接返回了, 也不用拿锁了
     }
-    while (ABTD_spinlock_try_acquire(p_lock)) {
+
+	// 走到这里, 队列不为空
+    while (ABTD_spinlock_try_acquire(p_lock)) {  // 拿锁失败
         /* Lock acquisition failed.  Check the size. */
         while (1) {
-            if (ABTD_atomic_acquire_load_int(&p_queue->is_empty)) {
+            if (ABTD_atomic_acquire_load_int(&p_queue->is_empty)) {  // 再次判断队列是否为空
                 /* The pool becomes empty.  Lock is not taken. */
                 return 1;
-            } else if (!ABTD_spinlock_is_locked(p_lock)) {
+            } else if (!ABTD_spinlock_is_locked(p_lock)) {  // p_lock没有加锁, 就再次尝试加锁
                 /* Lock seems released.  Let's try to take a lock again. */
                 break;
             }
         }
     }
+
+	// 队列不为空, 拿锁成功
     /* Lock is acquired. */
     return 0;
 }
 
+// 判断队列是否为空
+// 队列为空返回ABT_TRUE, 不为空返回ABT_FALSE
 static inline ABT_bool thread_queue_is_empty(const thread_queue_t *p_queue)
 {
     return ABTD_atomic_acquire_load_int(&p_queue->is_empty) ? ABT_TRUE
                                                             : ABT_FALSE;
 }
 
+// 返回队列的大小
 static inline size_t thread_queue_get_size(const thread_queue_t *p_queue)
 {
     return p_queue->num_threads;
 }
 
+// 插入在队列头部
 static inline void thread_queue_push_head(thread_queue_t *p_queue,
                                           ABTI_thread *p_thread)
 {
@@ -89,6 +101,7 @@ static inline void thread_queue_push_head(thread_queue_t *p_queue,
     ABTD_atomic_release_store_int(&p_thread->is_in_pool, 1);
 }
 
+// 插入在队列头部
 static inline void thread_queue_push_tail(thread_queue_t *p_queue,
                                           ABTI_thread *p_thread)
 {
@@ -112,6 +125,7 @@ static inline void thread_queue_push_tail(thread_queue_t *p_queue,
     ABTD_atomic_release_store_int(&p_thread->is_in_pool, 1);
 }
 
+// 工作队列的头部弹出任务
 static inline ABTI_thread *thread_queue_pop_head(thread_queue_t *p_queue)
 {
     if (p_queue->num_threads > 0) {
@@ -137,6 +151,7 @@ static inline ABTI_thread *thread_queue_pop_head(thread_queue_t *p_queue)
     }
 }
 
+// 工作队列的尾部弹出任务
 static inline ABTI_thread *thread_queue_pop_tail(thread_queue_t *p_queue)
 {
     if (p_queue->num_threads > 0) {
@@ -162,6 +177,7 @@ static inline ABTI_thread *thread_queue_pop_tail(thread_queue_t *p_queue)
     }
 }
 
+// 从队列中删除p_thread任务
 ABTU_ret_err static inline int thread_queue_remove(thread_queue_t *p_queue,
                                                    ABTI_thread *p_thread)
 {
@@ -190,6 +206,7 @@ ABTU_ret_err static inline int thread_queue_remove(thread_queue_t *p_queue,
     return ABT_SUCCESS;
 }
 
+// 遍历打印队列中的所有任务
 static inline void thread_queue_print_all(const thread_queue_t *p_queue,
                                           void *arg,
                                           void (*print_fn)(void *, ABT_thread))

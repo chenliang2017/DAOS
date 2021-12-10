@@ -43,8 +43,8 @@ static ABT_unit pool_pop_timedwait(ABT_pool pool, double abstime_secs);
 static ABT_bool pool_unit_is_in_pool(ABT_unit unit);
 
 struct data {
-    ABTD_spinlock mutex;
-    thread_queue_t queue;
+    ABTD_spinlock  mutex;	// 自旋锁
+    thread_queue_t queue;   // 工作队列
 };
 typedef struct data data_t;
 
@@ -119,7 +119,7 @@ static int pool_init(ABT_pool pool, ABT_pool_config config)
         /* Initialize the mutex */
         ABTD_spinlock_clear(&p_data->mutex);
     }
-    thread_queue_init(&p_data->queue);
+    thread_queue_init(&p_data->queue);  // 工作队列初始化
 
     p_pool->data = p_data;
     return abt_errno;
@@ -129,10 +129,11 @@ static void pool_free(ABT_pool pool)
 {
     ABTI_pool *p_pool = ABTI_pool_get_ptr(pool);
     data_t *p_data = pool_get_data_ptr(p_pool->data);
-    thread_queue_free(&p_data->queue);
-    ABTU_free(p_data);
+    thread_queue_free(&p_data->queue);  // 释放工作队列
+    ABTU_free(p_data);  // 释放内存块
 }
 
+// pool是否为空
 static ABT_bool pool_is_empty(ABT_pool pool)
 {
     ABTI_pool *p_pool = ABTI_pool_get_ptr(pool);
@@ -140,6 +141,7 @@ static ABT_bool pool_is_empty(ABT_pool pool)
     return thread_queue_is_empty(&p_data->queue);
 }
 
+// pool中任务的数量
 static size_t pool_get_size(ABT_pool pool)
 {
     ABTI_pool *p_pool = ABTI_pool_get_ptr(pool);
@@ -147,6 +149,7 @@ static size_t pool_get_size(ABT_pool pool)
     return thread_queue_get_size(&p_data->queue);
 }
 
+// 工作任务加到pool的工作队列尾部
 static void pool_push_shared(ABT_pool pool, ABT_unit unit,
                              ABT_pool_context context)
 {
@@ -159,6 +162,7 @@ static void pool_push_shared(ABT_pool pool, ABT_unit unit,
     ABTD_spinlock_release(&p_data->mutex);
 }
 
+// 工作任务加到pool的工作队列尾部
 static void pool_push_private(ABT_pool pool, ABT_unit unit,
                               ABT_pool_context context)
 {
@@ -201,7 +205,9 @@ static void pool_push_many_private(ABT_pool pool, const ABT_unit *units,
     }
 }
 
-static ABT_thread pool_pop_wait(ABT_pool pool, double time_secs/*睡眠等待的秒数*/,
+// 睡眠等待, 直到超时
+// 传入的是需要等待的时间
+static ABT_thread pool_pop_wait(ABT_pool pool, double time_secs,
                                 ABT_pool_context context)
 {
     (void)context;
@@ -210,33 +216,35 @@ static ABT_thread pool_pop_wait(ABT_pool pool, double time_secs/*睡眠等待的
     double time_start = 0.0;
     while (1) {
         if (thread_queue_acquire_spinlock_if_not_empty(&p_data->queue,
-                                                       &p_data->mutex) == 0) {  // 不为空的话直接获取返回
+                                                       &p_data->mutex) == 0) {
             ABTI_thread *p_thread = thread_queue_pop_head(&p_data->queue);
             ABTD_spinlock_release(&p_data->mutex);
             if (p_thread)
                 return ABTI_thread_get_handle(p_thread);
         }
         if (time_start == 0.0) {
-            time_start = ABTI_get_wtime();  // 第一次进来, 记录时间
+            time_start = ABTI_get_wtime();
         } else {
-            double elapsed = ABTI_get_wtime() - time_start;  // 从第一次进来到现在经历的秒数
-            if (elapsed > time_secs)  // 等待的时间已经超过了要求的时间了
-                return ABT_THREAD_NULL;  // 还是没有数据, 直接返回空
+            double elapsed = ABTI_get_wtime() - time_start;
+            if (elapsed > time_secs)
+                return ABT_THREAD_NULL;
         }
         /* Sleep. */
         const int sleep_nsecs = 100;
         struct timespec ts = { 0, sleep_nsecs };
-        nanosleep(&ts, NULL);  // 睡眠等待100ns
+        nanosleep(&ts, NULL);
     }
 }
 
-static ABT_unit pool_pop_timedwait(ABT_pool pool, double abstime_secs/*传入的是绝对时间*/)
+// 睡眠等待, 直到超时
+// 传入的是某个未来的绝对时间点
+static ABT_unit pool_pop_timedwait(ABT_pool pool, double abstime_secs)
 {
     ABTI_pool *p_pool = ABTI_pool_get_ptr(pool);
     data_t *p_data = pool_get_data_ptr(p_pool->data);
     while (1) {
         if (thread_queue_acquire_spinlock_if_not_empty(&p_data->queue,
-                                                       &p_data->mutex) == 0) {  // 有数据直接获取返回
+                                                       &p_data->mutex) == 0) {
             ABTI_thread *p_thread = thread_queue_pop_head(&p_data->queue);
             ABTD_spinlock_release(&p_data->mutex);
             if (p_thread) {
@@ -247,7 +255,7 @@ static ABT_unit pool_pop_timedwait(ABT_pool pool, double abstime_secs/*传入的
         struct timespec ts = { 0, sleep_nsecs };
         nanosleep(&ts, NULL);
 
-        if (ABTI_get_wtime() > abstime_secs)  // 绝对时间对比
+        if (ABTI_get_wtime() > abstime_secs)
             return ABT_UNIT_NULL;
     }
 }

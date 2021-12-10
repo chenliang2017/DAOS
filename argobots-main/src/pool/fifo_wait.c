@@ -121,6 +121,7 @@ static size_t pool_get_size(ABT_pool pool)
     return thread_queue_get_size(&p_data->queue);
 }
 
+// 入队, 加入到尾部, 并通知等待的条件变量
 static void pool_push(ABT_pool pool, ABT_unit unit, ABT_pool_context context)
 {
     (void)context;
@@ -160,6 +161,9 @@ static void pool_push_many(ABT_pool pool, const ABT_unit *units,
     }
 }
 
+
+// 睡眠等待
+// 等的是一个时间段值
 static ABT_thread pool_pop_wait(ABT_pool pool, double time_secs,
                                 ABT_pool_context context)
 {
@@ -168,7 +172,7 @@ static ABT_thread pool_pop_wait(ABT_pool pool, double time_secs,
     data_t *p_data = pool_get_data_ptr(p_pool->data);
     pthread_mutex_lock(&p_data->mutex);
     if (thread_queue_is_empty(&p_data->queue)) {
-#if defined(ABT_CONFIG_USE_CLOCK_GETTIME)  // 该宏有定义
+#if defined(ABT_CONFIG_USE_CLOCK_GETTIME)
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += (time_t)time_secs;
@@ -178,8 +182,6 @@ static ABT_thread pool_pop_wait(ABT_pool pool, double time_secs,
             ts.tv_nsec -= 1e9;
         }
         pthread_cond_timedwait(&p_data->cond, &p_data->mutex, &ts);
-		// 可以使用链接中的方法来达到相对时间等待的目的 https://blog.csdn.net/yichigo/article/details/23459613
-		// 也可以在该函数中直接使用下面#else中的内容
 #else
         /* We cannot use pthread_cond_timedwait().  Let's use nanosleep()
          * instead */
@@ -207,6 +209,8 @@ static inline void convert_double_sec_to_timespec(struct timespec *ts_out,
     ts_out->tv_nsec = (long)((seconds - ts_out->tv_sec) * 1000000000.0);
 }
 
+// 睡眠等待
+// 等的是一个未来的绝对时间戳
 static ABT_unit pool_pop_timedwait(ABT_pool pool, double abstime_secs)
 {
     ABTI_pool *p_pool = ABTI_pool_get_ptr(pool);
@@ -216,7 +220,6 @@ static ABT_unit pool_pop_timedwait(ABT_pool pool, double abstime_secs)
         struct timespec ts;
         convert_double_sec_to_timespec(&ts, abstime_secs);
         pthread_cond_timedwait(&p_data->cond, &p_data->mutex, &ts);
-		// 修改方式参看pool_pop_wait
     }
     ABTI_thread *p_thread = thread_queue_pop_head(&p_data->queue);
     pthread_mutex_unlock(&p_data->mutex);
