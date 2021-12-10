@@ -15,7 +15,7 @@
 
 struct attr_list_iter_args {
 	size_t		 available; /* Remaining client buffer space */
-	size_t		 length; /* Aggregate length of attribute names */
+	size_t		 length; 	/* Aggregate length of attribute names */
 	size_t		 iov_index;
 	size_t		 iov_count;
 	d_iov_t	*iovs;

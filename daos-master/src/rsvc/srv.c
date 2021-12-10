@@ -16,6 +16,7 @@
 #include <daos_srv/rsvc.h>
 #include "rpc.h"
 
+// 全局的服务列表, 目前只有pool/mgmt两种服务
 static struct ds_rsvc_class *rsvc_classes[DS_RSVC_CLASS_COUNT];
 
 void
@@ -60,13 +61,15 @@ state_str(enum ds_rsvc_state state)
 
 /* Allocate and initialize a ds_rsvc object. */
 static int
-alloc_init(enum ds_rsvc_class_id class, d_iov_t *id, uuid_t db_uuid,
+alloc_init(enum ds_rsvc_class_id class/*类型*/, d_iov_t *id, uuid_t db_uuid,
 	   struct ds_rsvc **svcp)
 {
 	struct ds_rsvc *svc;
 	int		rc;
 
-	rc = rsvc_class(class)->sc_alloc(id, &svc);
+	// 不同的服务初始化的时候注册了rsvc_class, 类型为 ds_rsvc_class
+	
+	rc = rsvc_class(class)->sc_alloc(id, &svc);  // 初始化(申请空间+赋值)
 	if (rc != 0)
 		goto err;
 
@@ -78,11 +81,11 @@ alloc_init(enum ds_rsvc_class_id class, d_iov_t *id, uuid_t db_uuid,
 	uuid_copy(svc->s_db_uuid, db_uuid);
 	svc->s_state = DS_RSVC_DOWN;
 
-	rc = rsvc_class(class)->sc_name(&svc->s_id, &svc->s_name);
+	rc = rsvc_class(class)->sc_name(&svc->s_id, &svc->s_name);	// 根据id生成名字
 	if (rc != 0)
 		goto err_svc;
 
-	rc = rsvc_class(class)->sc_locate(&svc->s_id, &svc->s_db_path);
+	rc = rsvc_class(class)->sc_locate(&svc->s_id, &svc->s_db_path);  // 生成文件名 /mnt/daos/s_id/rdb-pool
 	if (rc != 0)
 		goto err_name;
 
@@ -171,7 +174,7 @@ ds_rsvc_put(struct ds_rsvc *svc)
 	}
 }
 
-static struct d_hash_table rsvc_hash;
+static struct d_hash_table rsvc_hash;	// 全局的rsvc哈希表
 
 static struct ds_rsvc *
 rsvc_obj(d_list_t *rlink)
@@ -254,7 +257,7 @@ ds_rsvc_lookup(enum ds_rsvc_class_id class, d_iov_t *id,
 
 	D_ASSERT(dss_get_module_info()->dmi_xs_id == 0);
 
-	entry = d_hash_rec_find(&rsvc_hash, id->iov_buf, id->iov_len);
+	entry = d_hash_rec_find(&rsvc_hash, id->iov_buf, id->iov_len);// 通过提供的id找服务
 	if (entry == NULL) {
 		char	       *path = NULL;
 		struct stat	buf;
@@ -311,7 +314,7 @@ up(struct ds_rsvc *svc)
  * \param[out]	hint	rsvc hint
  */
 void
-ds_rsvc_set_hint(struct ds_rsvc *svc, struct rsvc_hint *hint)
+ds_rsvc_set_hint(struct ds_rsvc *svc, struct rsvc_hint *hint)  // 获取leader的信息
 {
 	int rc;
 
@@ -349,15 +352,18 @@ ds_rsvc_lookup_leader(enum ds_rsvc_class_id class, d_iov_t *id,
 	struct ds_rsvc *svc;
 	int		rc;
 
-	rc = ds_rsvc_lookup(class, id, &svc);
+	rc = ds_rsvc_lookup(class, id, &svc);  // 通过id找到服务
 	if (rc != 0)
 		return rc;
-	if (!up(svc)) {
+	if (!up(svc)) {  // 不是leader
 		if (hint != NULL)
-			ds_rsvc_set_hint(svc, hint);
+			ds_rsvc_set_hint(svc, hint);   // 获取leader的信息
 		ds_rsvc_put(svc);
 		return -DER_NOTLEADER;
 	}
+
+	// 跑到这里代表是leader
+	
 	get_leader(svc);
 	*svcp = svc;
 	return 0;
@@ -433,7 +439,7 @@ fini_map_distd(struct ds_rsvc *svc)
 }
 
 static int
-rsvc_step_up_cb(struct rdb *db, uint64_t term, void *arg)
+rsvc_step_up_cb(struct rdb *db, uint64_t term/*leader编号*/, void *arg)// 非leader变成leader时触发该回调
 {
 	struct ds_rsvc *svc = arg;
 	bool		map_distd_initialized = false;
@@ -451,14 +457,14 @@ rsvc_step_up_cb(struct rdb *db, uint64_t term, void *arg)
 	D_DEBUG(DB_MD, "%s: stepping up to "DF_U64"\n", svc->s_name,
 		svc->s_term);
 
-	if (rsvc_class(svc->s_class)->sc_map_dist != NULL) {
-		rc = init_map_distd(svc);
+	if (rsvc_class(svc->s_class)->sc_map_dist != NULL) {  // map分发函数不为空
+		rc = init_map_distd(svc);  // 创建一个协程用来分发map
 		if (rc != 0)
 			goto out_mutex;
 		map_distd_initialized = true;
 	}
 
-	rc = rsvc_class(svc->s_class)->sc_step_up(svc);
+	rc = rsvc_class(svc->s_class)->sc_step_up(svc);  // 触发回调, 告知上层变成了leader, 做对应的动作
 	if (rc == DER_UNINIT) {
 		change_state(svc, DS_RSVC_UP_EMPTY);
 		rc = 0;
@@ -526,7 +532,7 @@ out_mutex:
 }
 
 static void
-rsvc_step_down_cb(struct rdb *db, uint64_t term, void *arg)
+rsvc_step_down_cb(struct rdb *db, uint64_t term, void *arg)  // 失去leader职位后, 会触发该回调函数
 {
 	struct ds_rsvc *svc = arg;
 
@@ -542,7 +548,7 @@ rsvc_step_down_cb(struct rdb *db, uint64_t term, void *arg)
 		change_state(svc, DS_RSVC_DRAINING);
 
 		if (rsvc_class(svc->s_class)->sc_map_dist != NULL)
-			drain_map_distd(svc);
+			drain_map_distd(svc);  // 已经失去leader职位了, 就不要分发map的功能了
 
 		rsvc_class(svc->s_class)->sc_drain(svc);
 
@@ -560,7 +566,7 @@ rsvc_step_down_cb(struct rdb *db, uint64_t term, void *arg)
 		rsvc_class(svc->s_class)->sc_step_down(svc);
 
 		if (rsvc_class(svc->s_class)->sc_map_dist != NULL)
-			fini_map_distd(svc);
+			fini_map_distd(svc);  // 等协程退出
 	}
 
 	change_state(svc, DS_RSVC_DOWN);
@@ -595,13 +601,13 @@ rsvc_stop_cb(struct rdb *db, int err, void *arg)
 }
 
 static struct rdb_cbs rsvc_rdb_cbs = {
-	.dc_step_up	= rsvc_step_up_cb,
-	.dc_step_down	= rsvc_step_down_cb,
-	.dc_stop	= rsvc_stop_cb
+	.dc_step_up		= rsvc_step_up_cb,		// 非leader变成leader时触发该回调
+	.dc_step_down	= rsvc_step_down_cb,	// leader变成非leader时触发该回调
+	.dc_stop		= rsvc_stop_cb
 };
 
 static void
-map_distd(void *arg)
+map_distd(void *arg)// 分发map的协程
 {
 	struct ds_rsvc *svc = arg;
 
@@ -615,23 +621,23 @@ map_distd(void *arg)
 			stop = svc->s_map_distd_stop;
 			if (stop)
 				break;
-			if (svc->s_map_dist) {
+			if (svc->s_map_dist) {  // 有需要分发的map, 向承载pool的所有rank分发
 				svc->s_map_dist = false;
 				break;
 			}
-			sched_cond_wait(svc->s_map_dist_cv, svc->s_mutex);
+			sched_cond_wait(svc->s_map_dist_cv, svc->s_mutex);  // 协程的条件变量等待
 		}
 		ABT_mutex_unlock(svc->s_mutex);
 		if (stop)
 			break;
-		rc = rsvc_class(svc->s_class)->sc_map_dist(svc);
+		rc = rsvc_class(svc->s_class)->sc_map_dist(svc);  // 分发map给承载服务的所有rank
 		if (rc != 0) {
 			/*
 			 * Try again, but back off a little bit to limit the
 			 * retry rate.
 			 */
 			svc->s_map_dist = true;
-			dss_sleep(3000 /* ms */);
+			dss_sleep(3000 /* ms */);  // 失败的情况下, 睡眠3秒再次尝试
 		}
 	}
 	put_leader(svc);
@@ -644,16 +650,17 @@ map_distd(void *arg)
  * ds_rsvc_class.sc_map_dist, which must be implemented by the rsvc class.
  *
  * \param[in]	svc	replicated service
+ * 异步的动作, 触发map的分发
  */
 void
-ds_rsvc_request_map_dist(struct ds_rsvc *svc)
+ds_rsvc_request_map_dist(struct ds_rsvc *svc)  // 触发信号量, map_distd 协程跑起来
 {
 	svc->s_map_dist = true;
 	ABT_cond_broadcast(svc->s_map_dist_cv);
 }
 
 static bool
-nominated(d_rank_list_t *replicas, uuid_t db_uuid)
+nominated(d_rank_list_t *replicas, uuid_t db_uuid)  // uuid对副本数取余, 然后判断结果是否与自己的rank值一直
 {
 	int i;
 
@@ -662,20 +669,21 @@ nominated(d_rank_list_t *replicas, uuid_t db_uuid)
 		return false;
 
 	/* Only one replica. */
-	if (replicas->rl_nr == 1)
+	if (replicas->rl_nr == 1)  // 只有一个rank
 		return true;
 
 	/*
 	 * Nominate by hashing the DB UUID. The only requirement is that every
 	 * replica shall end up with the same nomination.
 	 */
+	// uuid哈希后对副本数进行取余 
 	i = d_hash_murmur64(db_uuid, sizeof(uuid_t), 0x2db) % replicas->rl_nr;
 
-	return (replicas->rl_ranks[i] == dss_self_rank());
+	return (replicas->rl_ranks[i] == dss_self_rank());  // 判断一下取余后的结果是不是自己
 }
 
 static bool
-self_only(d_rank_list_t *replicas)
+self_only(d_rank_list_t *replicas)  // 只有自己承载服务
 {
 	return (replicas != NULL && replicas->rl_nr == 1 &&
 		replicas->rl_ranks[0] == dss_self_rank());
@@ -683,12 +691,12 @@ self_only(d_rank_list_t *replicas)
 
 static int
 start(enum ds_rsvc_class_id class, d_iov_t *id, uuid_t db_uuid, bool create,
-      size_t size, d_rank_list_t *replicas, void *arg, struct ds_rsvc **svcp)
+      size_t size, d_rank_list_t *replicas/*承载服务的所有ranks*/, void *arg, struct ds_rsvc **svcp)  // 多副本上并发执行
 {
 	struct ds_rsvc *svc = NULL;
 	int		rc;
 
-	rc = alloc_init(class, id, db_uuid, &svc);
+	rc = alloc_init(class, id, db_uuid, &svc);  // 申请空间+初始化
 	if (rc != 0)
 		goto err;
 	svc->s_ref++;
@@ -708,15 +716,16 @@ start(enum ds_rsvc_class_id class, d_iov_t *id, uuid_t db_uuid, bool create,
 	 * we are the "nominated" replica, start a campaign without waiting for
 	 * the election timeout.
 	 */
-	if (create && nominated(replicas, svc->s_db_uuid)) {
+	if (create && nominated(replicas, svc->s_db_uuid)) {  // uuid哈希取余后的值与自己的rank值一致
 		/* Give others a chance to get ready for voting. */
+		// 等一会, 等其他副本也执行完上面的动作(rdb_create/rdb_start)
 		dss_sleep(1 /* ms */);
-		rc = rdb_campaign(svc->s_db);
-		if (rc != 0)
+		rc = rdb_campaign(svc->s_db);  // 启动一次新的选举
+		if (rc != 0)				   // 由于经过了上面的哈希操作, 所以只有一个rank会启动选举动作
 			goto err_db;
 	}
 
-	if (create && self_only(replicas) &&
+	if (create && self_only(replicas)/*只有一个副本并且是自己*/ &&
 	    rsvc_class(class)->sc_bootstrap != NULL) {
 		rc = bootstrap_self(svc, arg);
 		if (rc != 0)
@@ -835,10 +844,11 @@ ds_rsvc_stop_nodb(enum ds_rsvc_class_id class, d_iov_t *id)
  *
  * \retval -DER_ALREADY		replicated service already started
  * \retval -DER_CANCELED	replicated service stopping
+ * 接收处理RSVC_START消息, 在承载服务的所有rank上同步执行
  */
 int
 ds_rsvc_start(enum ds_rsvc_class_id class, d_iov_t *id, uuid_t db_uuid,
-	      bool create, size_t size, d_rank_list_t *replicas, void *arg)
+	      bool create, size_t size, d_rank_list_t *replicas/*承载服务的所有ranks的集合*/, void *arg)
 {
 	struct ds_rsvc		*svc = NULL;
 	d_list_t		*entry;
@@ -846,6 +856,7 @@ ds_rsvc_start(enum ds_rsvc_class_id class, d_iov_t *id, uuid_t db_uuid,
 
 	D_ASSERT(dss_get_module_info()->dmi_xs_id == 0);
 
+	// 根据服务的UUID找到服务
 	entry = d_hash_rec_find(&rsvc_hash, id->iov_buf, id->iov_len);
 	if (entry != NULL) {
 		svc = rsvc_obj(entry);
@@ -863,6 +874,7 @@ ds_rsvc_start(enum ds_rsvc_class_id class, d_iov_t *id, uuid_t db_uuid,
 	if (rc != 0)
 		goto out;
 
+	// 插入到全局的哈希链表中
 	rc = d_hash_rec_insert(&rsvc_hash, svc->s_id.iov_buf, svc->s_id.iov_len,
 			       &svc->s_entry, true /* exclusive */);
 	if (rc != 0) {
@@ -903,12 +915,12 @@ stop(struct ds_rsvc *svc, bool destroy)
 		 * otherwise, the callback must already be pending. Either way,
 		 * the service shall eventually enter the DS_RSVC_DOWN state.
 		 */
-		rdb_resign(svc->s_db, svc->s_term);
+		rdb_resign(svc->s_db, svc->s_term);  // 辞掉leader职位, 触发rsvc_step_down_cb回调
 	while (svc->s_state != DS_RSVC_DOWN)
 		ABT_cond_wait(svc->s_state_cv, svc->s_mutex);
 
 	if (destroy)
-		rc = remove(svc->s_db_path);
+		rc = remove(svc->s_db_path);  // 删db文件
 
 	ABT_mutex_unlock(svc->s_mutex);
 	ds_rsvc_put(svc);
@@ -925,6 +937,7 @@ stop(struct ds_rsvc *svc, bool destroy)
  *
  * \retval -DER_ALREADY		replicated service already stopped
  * \retval -DER_CANCELED	replicated service stopping
+ * 接收处理RSVC_STOP消息, 在承载服务的所有rank上同步执行
  */
 int
 ds_rsvc_stop(enum ds_rsvc_class_id class, d_iov_t *id, bool destroy)
@@ -933,10 +946,10 @@ ds_rsvc_stop(enum ds_rsvc_class_id class, d_iov_t *id, bool destroy)
 	int			 rc;
 
 	D_ASSERT(dss_get_module_info()->dmi_xs_id == 0);
-	rc = ds_rsvc_lookup(class, id, &svc);
+	rc = ds_rsvc_lookup(class, id, &svc);  // 先通过id找到对应的服务
 	if (rc != 0)
 		return -DER_ALREADY;
-	d_hash_rec_delete_at(&rsvc_hash, &svc->s_entry);
+	d_hash_rec_delete_at(&rsvc_hash, &svc->s_entry);  // 从全局的哈希列表中删除
 	return stop(svc, destroy);
 }
 
@@ -1082,13 +1095,13 @@ ds_rsvc_remove_replicas_s(struct ds_rsvc *svc, d_rank_list_t *ranks, bool stop)
 	rc = daos_rank_list_dup(&stop_ranks, ranks);
 	if (rc != 0)
 		return rc;
-	rc = rdb_remove_replicas(svc->s_db, ranks);
+	rc = rdb_remove_replicas(svc->s_db, ranks);  //删除ranks列表中承载服务的rank
 
 	/* filter out failed ranks */
 	daos_rank_list_filter(ranks, stop_ranks, true /* exclude */);
 	if (stop_ranks->rl_nr > 0 && stop)
 		ds_rsvc_dist_stop(svc->s_class, &svc->s_id, stop_ranks,
-				  NULL, true /* destroy */);
+				  NULL, true /* destroy */);  // 停服务
 	d_rank_list_free(stop_ranks);
 	return rc;
 }
@@ -1100,8 +1113,8 @@ ds_rsvc_remove_replicas(enum ds_rsvc_class_id class, d_iov_t *id,
 	struct ds_rsvc	*svc;
 	int		 rc;
 
-	rc = ds_rsvc_lookup_leader(class, id, &svc, hint);
-	if (rc != 0)
+	rc = ds_rsvc_lookup_leader(class, id, &svc, hint); // 通过id找服务, 并观察当前节点是否为leader
+	if (rc != 0)  // 不是leader
 		return rc;
 	rc = ds_rsvc_remove_replicas_s(svc, ranks, stop);
 	ds_rsvc_set_hint(svc, hint);
@@ -1124,6 +1137,7 @@ enum rdb_stop_flag {
  * Create a bcast in the primary group. If filter_invert is false, bcast to the
  * whole primary group filtering out filter_ranks; otherwise, bcast to
  * filter_ranks only.
+ * 构造一个广播的RPC句柄
  */
 static int
 bcast_create(crt_opcode_t opc, bool filter_invert, d_rank_list_t *filter_ranks,
@@ -1148,7 +1162,7 @@ bcast_create(crt_opcode_t opc, bool filter_invert, d_rank_list_t *filter_ranks,
  * be called on any rank. If \a create is false, \a ranks may be NULL.
  *
  * \param[in]	class		replicated service class
- * \param[in]	id		replicated service ID
+ * \param[in]	id			replicated service ID
  * \param[in]	dbid		database UUID
  * \param[in]	ranks		list of replica ranks
  * \param[in]	create		create replicas first
@@ -1156,8 +1170,8 @@ bcast_create(crt_opcode_t opc, bool filter_invert, d_rank_list_t *filter_ranks,
  * \param[in]	size		size of each replica in bytes if \a create
  */
 int
-ds_rsvc_dist_start(enum ds_rsvc_class_id class, d_iov_t *id, const uuid_t dbid,
-		   const d_rank_list_t *ranks, bool create, bool bootstrap,
+ds_rsvc_dist_start(enum ds_rsvc_class_id class/*服务类型*/, d_iov_t *id/*服务的uuid*/, const uuid_t dbid/*服务的uuid*/,
+		   const d_rank_list_t *ranks/*承载服务的rank列表, 从0开始编号*/, bool create, bool bootstrap,
 		   size_t size)
 {
 	crt_rpc_t		*rpc;
@@ -1170,25 +1184,28 @@ ds_rsvc_dist_start(enum ds_rsvc_class_id class, d_iov_t *id, const uuid_t dbid,
 		DP_UUID(dbid), create ? "creating" : "starting");
 
 	rc = bcast_create(RSVC_START, ranks != NULL /* filter_invert */,
-			  (d_rank_list_t *)ranks, &rpc);
+			  (d_rank_list_t *)ranks, &rpc); // 构造rpc句柄, 向ranks中指定的rank发送RSVC_START消息
 	if (rc != 0)
 		goto out;
-	in = crt_req_get(rpc);
-	in->sai_class = class;
-	rc = daos_iov_copy(&in->sai_svc_id, id);
+	in = crt_req_get(rpc);	// 构造入参
+	in->sai_class = class;  // 服务类型
+	rc = daos_iov_copy(&in->sai_svc_id, id);	// 服务的UUID
 	if (rc != 0)
 		goto out_rpc;
-	uuid_copy(in->sai_db_uuid, dbid);
+	uuid_copy(in->sai_db_uuid, dbid);			// 服务的UUID
 	if (create)
 		in->sai_flags |= RDB_AF_CREATE;
 	if (bootstrap)
 		in->sai_flags |= RDB_AF_BOOTSTRAP;
 	in->sai_size = size;
-	in->sai_ranks = (d_rank_list_t *)ranks;
+	in->sai_ranks = (d_rank_list_t *)ranks;		// 承载服务的ranks列表
 
-	rc = dss_rpc_send(rpc);
+	rc = dss_rpc_send(rpc);  // 发送给所有的rank
 	if (rc != 0)
 		goto out_mem;
+
+	// 阻塞等待
+	// 各个rank转 ds_rsvc_start_handler 执行
 
 	out = crt_reply_get(rpc);
 	rc = out->sao_rc;
@@ -1209,7 +1226,7 @@ out:
 }
 
 static void
-ds_rsvc_start_handler(crt_rpc_t *rpc)
+ds_rsvc_start_handler(crt_rpc_t *rpc)  // 接收处理RSVC_START消息, 在承载服务的所有rank上同步执行
 {
 	struct rsvc_start_in	*in = crt_req_get(rpc);
 	struct rsvc_start_out	*out = crt_reply_get(rpc);
@@ -1238,8 +1255,8 @@ ds_rsvc_start_aggregator(crt_rpc_t *source, crt_rpc_t *result, void *priv)
 	struct rsvc_start_out   *out_source;
 	struct rsvc_start_out   *out_result;
 
-	out_source = crt_reply_get(source);
-	out_result = crt_reply_get(result);
+	out_source = crt_reply_get(source);  // 获取返回值内存指针
+	out_result = crt_reply_get(result);	 // ditto
 	/* rc is error count, rc_errval first error value */
 	out_result->sao_rc += out_source->sao_rc;
 
@@ -1282,7 +1299,7 @@ ds_rsvc_dist_stop(enum ds_rsvc_class_id class, d_iov_t *id,
 
 	rc = bcast_create(RSVC_STOP, ranks != NULL /* filter_invert */,
 			  ranks != NULL ? (d_rank_list_t *)ranks : excluded,
-			  &rpc);
+			  &rpc);  // 创建rpc句柄, 向ranks列表中的rank发送RSVC_STOP消息
 	if (rc != 0)
 		goto out;
 	in = crt_req_get(rpc);
@@ -1296,6 +1313,9 @@ ds_rsvc_dist_stop(enum ds_rsvc_class_id class, d_iov_t *id,
 	rc = dss_rpc_send(rpc);
 	if (rc != 0)
 		goto out_mem;
+
+	// 阻塞等待
+	// 各个rank转 ds_rsvc_stop_handler 执行
 
 	out = crt_reply_get(rpc);
 	rc = out->soo_rc;
@@ -1314,9 +1334,9 @@ out:
 }
 
 static void
-ds_rsvc_stop_handler(crt_rpc_t *rpc)
+ds_rsvc_stop_handler(crt_rpc_t *rpc)// 接收处理RSVC_STOP消息, 在承载服务的所有rank上同步执行
 {
-	struct rsvc_stop_in	*in = crt_req_get(rpc);
+	struct rsvc_stop_in	*	 in  = crt_req_get(rpc);
 	struct rsvc_stop_out	*out = crt_reply_get(rpc);
 	int			 rc = 0;
 
@@ -1370,7 +1390,7 @@ ds_rsvc_get_md_cap(void)
 
 	v = getenv("DAOS_MD_CAP"); /* in MB */
 	if (v == NULL)
-		return size_default;
+		return size_default;   // 环境变量测试环境看是没有的, 返回128MB默认值	
 	n = atoi(v);
 	if (n < size_default >> 20) {
 		D_ERROR("metadata capacity too low; using %zu MB\n",
@@ -1381,13 +1401,13 @@ ds_rsvc_get_md_cap(void)
 }
 
 static int
-rsvc_module_init(void)
+rsvc_module_init(void)    //模块初始化
 {
 	return rsvc_hash_init();
 }
 
 static int
-rsvc_module_fini(void)
+rsvc_module_fini(void)		//模块去初始化
 {
 	rsvc_hash_fini();
 	return 0;
@@ -1399,8 +1419,8 @@ struct dss_module rsvc_module = {
 	.sm_ver		= DAOS_RSVC_VERSION,
 	.sm_init	= rsvc_module_init,
 	.sm_fini	= rsvc_module_fini,
-	.sm_proto_fmt	= &rsvc_proto_fmt,
+	.sm_proto_fmt	= &rsvc_proto_fmt,		// 支持的协议集
 	.sm_cli_count	= 0,
-	.sm_handlers	= rsvc_handlers,
+	.sm_handlers	= rsvc_handlers,		// 回调句柄相关
 	.sm_key		= NULL,
 };

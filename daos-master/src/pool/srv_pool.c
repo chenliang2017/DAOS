@@ -62,7 +62,7 @@ struct pool_svc_events {
 /* Pool service */
 struct pool_svc {
 	struct ds_rsvc		ps_rsvc;
-	uuid_t			ps_uuid;	/* pool UUID */
+	uuid_t				ps_uuid;	/* pool UUID */
 	struct cont_svc	       *ps_cont_svc;	/* one combined svc for now */
 	ABT_rwlock		ps_lock;	/* for DB data */
 	rdb_path_t		ps_root;	/* root KVS */
@@ -462,16 +462,16 @@ select_svc_ranks(int nreplicas, const d_rank_list_t *target_addrs,
 		return -DER_INVAL;
 
 	/* Determine the number of selectable targets. */
-	selectable = target_addrs->rl_nr;
+	selectable = target_addrs->rl_nr;  // 要选择的pool_srv的数量
 	if (daos_rank_list_find((d_rank_list_t *)target_addrs, 0 /* rank */,
-				&i_rank_zero)) {
+				&i_rank_zero)) {  // 承载池的rank列表中包含rank0
 		/*
 		 * Unless it is the only target available, we don't select rank
 		 * 0 for now to avoid losing orterun stdout.
 		 */
 		if (selectable > 1)
-			selectable -= 1 /* rank 0 */;
-	}
+			selectable -= 1 /* rank 0 */;  // 承载池的rank多个的情况下，rank0不作为pool_srv
+	}	// 为啥 rank0 不作为pool_srv的成员？？？
 
 	if (nreplicas > selectable)
 		nreplicas = selectable;
@@ -482,9 +482,9 @@ select_svc_ranks(int nreplicas, const d_rank_list_t *target_addrs,
 	/* TODO: Choose ranks according to failure domains. */
 	j = 0;
 	for (i = 0; i < target_addrs->rl_nr; i++) {
-		if (j == ranks->rl_nr)
+		if (j == ranks->rl_nr) // 已满足数量要求
 			break;
-		if (i == i_rank_zero && selectable > 1)
+		if (i == i_rank_zero && selectable > 1)  // 多个rank的情况下, rank0不承担pool_srv服务; 是不是意味着消息时发到rank0上的
 			/* This is rank 0 and it's not the only rank. */
 			continue;
 		D_DEBUG(DB_MD, "ranks[%d]: %u\n", j, target_addrs->rl_ranks[i]);
@@ -523,16 +523,17 @@ pool_rsvc_client_complete_rpc(struct rsvc_client *client, const crt_endpoint_t *
  * Create a (combined) pool(/container) service. This method shall be called on
  * a single storage node in the pool.
  *
- * \param[in]		pool_uuid	pool UUID
- * \param[in]		ntargets	number of targets in the pool
- * \param[in]		group		crt group ID (unused now)
+ * \param[in]		pool_uuid		pool UUID
+ * \param[in]		ntargets		number of targets in the pool
+ * \param[in]		group			crt group ID (unused now)
  * \param[in]		target_addrs	list of \a ntargets target ranks
- * \param[in]		ndomains	number of domains the pool spans over
- * \param[in]		domains		serialized domain tree
- * \param[in]		prop		pool properties
+ * \param[in]		ndomains		number of domains the pool spans over
+ * \param[in]		domains			serialized domain tree
+ * \param[in]		prop			pool properties
  * \param[in,out]	svc_addrs	\a svc_addrs.rl_nr inputs how many
  *					replicas shall be created; returns the
  *					list of pool service replica ranks
+ * 这个函数只在pool的一个节点上执行
  */
 int
 ds_pool_svc_create(const uuid_t pool_uuid, int ntargets, const char *group,
@@ -553,18 +554,23 @@ ds_pool_svc_create(const uuid_t pool_uuid, int ntargets, const char *group,
 	D_ASSERTF(ntargets == target_addrs->rl_nr, "ntargets=%u num=%u\n",
 		  ntargets, target_addrs->rl_nr);
 
+	// 选承担pool_srv服务的rank
+	// 多个rank的情况下, rank0是不承载pool_srv业务的
 	rc = select_svc_ranks(svc_addrs->rl_nr, target_addrs, ndomains,
-			      domains, &ranks);
+			      domains, &ranks);  // rank里存储承载pool_srv服务的所有rank
 	if (rc != 0)
 		D_GOTO(out, rc);
 
+	// 在承担pool-srv的所有rank上执行创建pool_srv的动作
+	// 各个rank转到 ds_rsvc_start_handler 函数中执行
+	// 该函数退出时, 各个rank的创建已经结束
 	d_iov_set(&psid, (void *)pool_uuid, sizeof(uuid_t));
 	rc = ds_rsvc_dist_start(DS_RSVC_CLASS_POOL, &psid, pool_uuid, ranks, true /* create */,
 				true /* bootstrap */, ds_rsvc_get_md_cap());
 	if (rc != 0)
 		D_GOTO(out_ranks, rc);
 
-	rc = rsvc_client_init(&client, ranks);
+	rc = rsvc_client_init(&client, ranks);  // ranks复制到client中
 	if (rc != 0)
 		D_GOTO(out_creation, rc);
 
@@ -598,12 +604,13 @@ rechoose:
 	in->pri_domains.ca_arrays = (uint32_t *)domains;
 
 	/* Send the POOL_CREATE request. */
+	// 触发回调函数: ds_pool_create_handler
 	rc = dss_rpc_send(rpc);
 	out = crt_reply_get(rpc);
 	D_ASSERT(out != NULL);
 	rc = rsvc_client_complete_rpc(&client, &ep, rc,
 				      rc == 0 ? out->pro_op.po_rc : -DER_IO,
-				      rc == 0 ? &out->pro_op.po_hint : NULL);
+				      rc == 0 ? &out->pro_op.po_hint : NULL);  // leader已经选出来了, 设置leader
 	if (rc == RSVC_CLIENT_RECHOOSE ||
 	    (rc == RSVC_CLIENT_PROCEED && daos_rpc_retryable_rc(out->pro_op.po_rc))) {
 		crt_req_decref(rpc);
@@ -651,7 +658,7 @@ ds_pool_svc_destroy(const uuid_t pool_uuid, d_rank_list_t *svc_ranks)
 }
 
 static int
-pool_svc_name_cb(d_iov_t *id, char **name)
+pool_svc_name_cb(d_iov_t *id, char **name)  // 根据id生成名字
 {
 	char *s;
 
@@ -667,7 +674,7 @@ pool_svc_name_cb(d_iov_t *id, char **name)
 }
 
 static int
-pool_svc_locate_cb(d_iov_t *id, char **path)
+pool_svc_locate_cb(d_iov_t *id, char **path)  // 在id对应的池目录下生成rdb-pool文件, 只产生文件名, 没有真的生成文件
 {
 	char *s;
 
@@ -691,7 +698,7 @@ pool_svc_alloc_cb(d_iov_t *id, struct ds_rsvc **rsvc)
 		goto err;
 	}
 
-	D_ALLOC_PTR(svc);
+	D_ALLOC_PTR(svc);  // 申请pool_svr结构体大小的空间
 	if (svc == NULL) {
 		rc = -DER_NOMEM;
 		goto err;
@@ -710,10 +717,10 @@ pool_svc_alloc_cb(d_iov_t *id, struct ds_rsvc **rsvc)
 		goto err_svc;
 	}
 
-	rc = rdb_path_init(&svc->ps_root);
+	rc = rdb_path_init(&svc->ps_root);  // 申请内存空间
 	if (rc != 0)
 		goto err_lock;
-	rc = rdb_path_push(&svc->ps_root, &rdb_path_root_key);
+	rc = rdb_path_push(&svc->ps_root, &rdb_path_root_key);  // 赋值
 	if (rc != 0)
 		goto err_root;
 
@@ -743,12 +750,13 @@ pool_svc_alloc_cb(d_iov_t *id, struct ds_rsvc **rsvc)
 		goto err_events_mutex;
 	}
 
+	// 容器服务的初始化
 	rc = ds_cont_svc_init(&svc->ps_cont_svc, svc->ps_uuid, 0 /* id */,
 			      &svc->ps_rsvc);
 	if (rc != 0)
 		goto err_events_cv;
 
-	*rsvc = &svc->ps_rsvc;
+	*rsvc = &svc->ps_rsvc;  // 指向池服务中的rsvc变量
 	return 0;
 
 err_events_cv:
@@ -1322,7 +1330,7 @@ out:
 }
 
 static void
-pool_svc_step_down_cb(struct ds_rsvc *rsvc)
+pool_svc_step_down_cb(struct ds_rsvc *rsvc)  // 失去leader职位后触发回调
 {
 	struct pool_svc	       *svc = pool_svc_obj(rsvc);
 	d_rank_t		rank;
@@ -1459,7 +1467,7 @@ ds_pool_cont_svc_lookup_leader(uuid_t pool_uuid, struct cont_svc **svcp,
  * iteration upon errors as other pools may still be able to work.
  */
 static int
-start_one(uuid_t uuid, void *varg)
+start_one(uuid_t uuid/*池的uuid*/, void *varg)  // 启动一个池
 {
 	char	       *path;
 	d_iov_t		id;
@@ -1527,7 +1535,7 @@ ds_pool_start_all(void)
 			DP_RC(rc));
 		return rc;
 	}
-	ABT_thread_join(thread);
+	ABT_thread_join(thread);  // 等协程结束
 	ABT_thread_free(&thread);
 	return 0;
 }
@@ -4020,7 +4028,7 @@ pool_svc_update_map_internal(struct pool_svc *svc, unsigned int opc,
 	map_version = pool_map_get_version(map);
 	D_DEBUG(DF_DSMS, DF_UUID": version=%u->%u\n",
 		DP_UUID(svc->ps_uuid), map_version_before, map_version);
-	if (map_version == map_version_before)
+	if (map_version == map_version_before)  // 版本号没有发生变化
 		D_GOTO(out_map, rc = 0);
 
 	/* Write the new pool map. */
@@ -4054,7 +4062,7 @@ pool_svc_update_map_internal(struct pool_svc *svc, unsigned int opc,
 		goto out_map_buf;
 	}
 
-	ds_rsvc_request_map_dist(&svc->ps_rsvc);
+	ds_rsvc_request_map_dist(&svc->ps_rsvc);  // 触发信号, 向承载pool的所有ranks分发新的map
 
 	replace_failed_replicas(svc, map);
 
@@ -4355,7 +4363,7 @@ ds_pool_tgt_add_in(uuid_t pool_uuid, struct pool_target_id_list *list)
  * leader hint, if available, is reported via hint (if not NULL).
  */
 static int
-pool_svc_update_map(struct pool_svc *svc, crt_opcode_t opc, bool exclude_rank,
+pool_svc_update_map(struct pool_svc *svc, crt_opcode_t opc, bool exclude_rank/*是否是标记为DEAD的操作*/,
 		    struct pool_target_addr_list *list,
 		    struct pool_target_addr_list *inval_list_out,
 		    uint32_t *map_version, struct rsvc_hint *hint)
@@ -4376,7 +4384,7 @@ pool_svc_update_map(struct pool_svc *svc, crt_opcode_t opc, bool exclude_rank,
 	if (rc)
 		D_GOTO(out, rc);
 
-	if (!updated)
+	if (!updated)	// pool_map没有更新直接跳到out, 无需下面的操作
 		D_GOTO(out, rc);
 
 	switch (opc) {
@@ -4403,7 +4411,7 @@ pool_svc_update_map(struct pool_svc *svc, crt_opcode_t opc, bool exclude_rank,
 		D_GOTO(out, rc = 0);
 	}
 
-	rc = ds_pool_iv_prop_fetch(svc->ps_pool, &prop);
+	rc = ds_pool_iv_prop_fetch(svc->ps_pool, &prop);  // 获取池属性
 	if (rc)
 		D_GOTO(out, rc);
 
@@ -4421,7 +4429,7 @@ pool_svc_update_map(struct pool_svc *svc, crt_opcode_t opc, bool exclude_rank,
 		tgt_map_ver);
 	if (tgt_map_ver != 0) {
 		rc = ds_rebuild_schedule(svc->ps_pool, tgt_map_ver,
-					 &target_list, op, delay);
+					 &target_list, op, delay);  // 重构相关
 		if (rc != 0) {
 			D_ERROR("rebuild fails rc: "DF_RC"\n", DP_RC(rc));
 			D_GOTO(out, rc);
@@ -4649,7 +4657,7 @@ out:
 }
 
 static int
-pool_svc_exclude_rank(struct pool_svc *svc, d_rank_t rank)
+pool_svc_exclude_rank(struct pool_svc *svc, d_rank_t rank/*待标记DEAD的rank*/)  // 只有pool_srv的主会跑到这里
 {
 	struct pool_target_addr_list	list;
 	struct pool_target_addr_list	inval_list_out = { 0 };

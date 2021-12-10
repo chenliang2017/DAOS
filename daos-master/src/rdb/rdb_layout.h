@@ -120,7 +120,7 @@ struct rdb_anchor {
  * rdb_layout.c using RDB_STRING_KEY().
  */
 extern d_iov_t rdb_mc_uuid;		/* uuid_t */
-extern d_iov_t rdb_mc_version;		/* uint32_t */
+extern d_iov_t rdb_mc_version;	/* uint32_t */
 extern d_iov_t rdb_mc_term;		/* uint64_t */
 extern d_iov_t rdb_mc_vote;		/* int */
 extern d_iov_t rdb_mc_lc;		/* rdb_lc_record */

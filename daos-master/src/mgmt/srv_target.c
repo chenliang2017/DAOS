@@ -46,7 +46,7 @@ struct ds_pooltgts {
 struct ds_pooltgts_rec {
 	uuid_t		dptr_uuid;
 	bool		cancel_create;	/* ask create hdlr to stop prealloc */
-	d_list_t	dptr_hlink;	/* in hash table */
+	d_list_t	dptr_hlink;		/* in hash table */
 };
 
 static struct ds_pooltgts	*pooltgts;
@@ -183,6 +183,7 @@ tgt_kill_pool(void *args)
  *
  * \param[in]	cb	callback called for each pool
  * \param[in]	arg	argument passed to each \a cb call
+ * 迭代找/mnt/daos文件下的所有池目录
  */
 static int
 common_pool_iterate(const char *path, int (*cb)(uuid_t uuid, void *arg), void *arg)
@@ -214,11 +215,12 @@ common_pool_iterate(const char *path, int (*cb)(uuid_t uuid, void *arg), void *a
 		}
 
 		/* A pool directory must have a valid UUID as its name. */
+		// 文件夹的名字是uuid, 类似于：cc8916d5-16a9-4ced-ac9e-c7a89739eb71
 		rc = uuid_parse(entry->d_name, uuid);
 		if (rc != 0)
 			continue;
 
-		rc = cb(uuid, arg);
+		rc = cb(uuid, arg);  // 回调函数, srv_pool.c : start_one(...)
 		if (rc != 0) {
 			if (rc == 1)
 				rc = 0;
@@ -466,7 +468,7 @@ tgt_vos_create_one(void *varg)
 	int			 rc;
 
 	rc = path_gen(vpa->vpa_uuid, newborns_path, VOS_FILE, &info->dmi_tgt_id,
-		      &path);
+		      &path);  // 每次进来dmi_tgt_id值都不一样，这个回调执行次数与rank上的target数是一致的
 	if (rc)
 		return rc;
 
@@ -481,22 +483,23 @@ tgt_vos_create_one(void *varg)
 }
 
 static int
-tgt_vos_preallocate(uuid_t uuid, daos_size_t scm_size, int tgt_nr)
+tgt_vos_preallocate(uuid_t uuid, daos_size_t scm_size, int tgt_nr/*engine上target的数量*/)
 {
 	char			*path = NULL;
 	int			 i;
 	int			 fd = -1;
 	int			 rc = 0;
 
-	for (i = 0; i < tgt_nr; i++) {
-		rc = path_gen(uuid, newborns_path, VOS_FILE, &i, &path);
+	// 为每个target都生成一个vos-xxx文件, 并预留指定大小
+	for (i = 0; i < tgt_nr; i++) {  
+		rc = path_gen(uuid, newborns_path, VOS_FILE, &i, &path);  // 生成文件名：
 		if (rc)
 			break;
 
 		D_DEBUG(DB_MGMT, DF_UUID": creating vos file %s\n",
 			DP_UUID(uuid), path);
 
-		fd = open(path, O_CREAT|O_RDWR, 0600);
+		fd = open(path, O_CREAT|O_RDWR, 0600);  // 创建vos-xxx文件, 每个target一个文件
 		if (fd < 0) {
 			rc = daos_errno2der(errno);
 			D_ERROR(DF_UUID": failed to create vos file %s: "
@@ -511,7 +514,7 @@ tgt_vos_preallocate(uuid_t uuid, daos_size_t scm_size, int tgt_nr)
 		 * Use fallocate(2) instead of posix_fallocate(3) since the
 		 * latter is bogus with tmpfs.
 		 */
-		rc = fallocate(fd, 0, 0, scm_size);
+		rc = fallocate(fd, 0, 0, scm_size);  // 预留大小
 		if (rc) {
 			rc = daos_errno2der(errno);
 			D_ERROR(DF_UUID": failed to allocate vos file %s with "
@@ -603,7 +606,7 @@ struct tgt_create_args {
 	struct ds_pooltgts_rec	*tca_ptrec;
 	daos_size_t		 tca_scm_size;
 	daos_size_t		 tca_nvme_size;
-	int			 tca_rc;
+	int			 	 tca_rc;
 };
 
 static void *
@@ -614,8 +617,8 @@ tgt_create_preallocate(void *arg)
 
 	/** generate path to the target directory */
 	rc = ds_mgmt_tgt_file(tca->tca_ptrec->dptr_uuid, NULL, NULL,
-			      &tca->tca_path);
-	if (rc)
+			      &tca->tca_path);  // 生成目录名称：/mnt/daos/目录下池的目录
+	if (rc)							// /mnt/daos/fa3d10c7-43cd-4dc7-a320-81c05167f638/
 		goto out;
 
 	/** check whether the target already exists */
@@ -628,14 +631,14 @@ tgt_create_preallocate(void *arg)
 		 * failed
 		 */
 		rc = dir_fsync(tca->tca_path);
-	} else if (errno == ENOENT) { /** target doesn't exist, create one */
+	} else if (errno == ENOENT) { /** target doesn't exist, create one, 文件夹不存在 */
 		/** create the pool directory under NEWBORNS */
 		rc = path_gen(tca->tca_ptrec->dptr_uuid, newborns_path, NULL,
-			      NULL, &tca->tca_newborn);
+			      NULL, &tca->tca_newborn);  // 生成目录名称：在/mnt/daos/NEWBORNS/目录下
 		if (rc)
 			goto out;
 
-		rc = mkdir(tca->tca_newborn, 0700);
+		rc = mkdir(tca->tca_newborn, 0700);	// 创建池目录, /mnt/daos/NEWBORNS/xxxxx
 		if (rc < 0 && errno != EEXIST) {
 			rc = daos_errno2der(errno);
 			D_ERROR("failed to created pool directory: "DF_RC"\n",
@@ -654,7 +657,7 @@ tgt_create_preallocate(void *arg)
 		D_ASSERT(dss_tgt_nr > 0);
 		rc = tgt_vos_preallocate(tca->tca_ptrec->dptr_uuid,
 					 max(tca->tca_scm_size / dss_tgt_nr,
-					     1 << 24), dss_tgt_nr);
+					     1 << 24), dss_tgt_nr);  // // 为每个target都生成一个vos-xxx文件, 并预留指定大小
 		if (rc)
 			goto out;
 	} else {
@@ -671,7 +674,7 @@ static int tgt_destroy(uuid_t pool_uuid, char *path);
  * RPC handler for target creation
  */
 void
-ds_mgmt_hdlr_tgt_create(crt_rpc_t *tc_req)
+ds_mgmt_hdlr_tgt_create(crt_rpc_t *tc_req)    // 在所有的rank上都会执行
 {
 	struct mgmt_tgt_create_in	*tc_in;
 	struct mgmt_tgt_create_out	*tc_out;
@@ -682,12 +685,12 @@ ds_mgmt_hdlr_tgt_create(crt_rpc_t *tc_req)
 	int				 rc = 0;
 
 	/** incoming request buffer */
-	tc_in = crt_req_get(tc_req);
+	tc_in = crt_req_get(tc_req);	// 发送过来的入参
 	D_DEBUG(DB_MGMT, DF_UUID": processing rpc %p\n",
 		DP_UUID(tc_in->tc_pool_uuid), tc_req);
 
 	/** reply buffer */
-	tc_out = crt_reply_get(tc_req);
+	tc_out = crt_reply_get(tc_req);	// 获取出参
 	D_ASSERT(tc_in != NULL && tc_out != NULL);
 
 	/* cleanup lingering pools to free up space */
@@ -697,12 +700,13 @@ ds_mgmt_hdlr_tgt_create(crt_rpc_t *tc_req)
 	D_ALLOC_PTR(tca.tca_ptrec);
 	if (tca.tca_ptrec == NULL)
 		D_GOTO(out_reply, rc = -DER_NOMEM);
-	uuid_copy(tca.tca_ptrec->dptr_uuid, tc_in->tc_pool_uuid);
+	uuid_copy(tca.tca_ptrec->dptr_uuid, tc_in->tc_pool_uuid);  // 池uuid
 	tca.tca_ptrec->cancel_create = false;
+	
 	ABT_mutex_lock(pooltgts->dpt_mutex);
 	rc = d_hash_rec_insert(&pooltgts->dpt_creates_ht,
 			       tca.tca_ptrec->dptr_uuid, sizeof(uuid_t),
-			       &tca.tca_ptrec->dptr_hlink, true);
+			       &tca.tca_ptrec->dptr_hlink, true);  // 根据池的uuid插入全局哈希链表(pooltgts->dpt_creates_ht)中
 	ABT_mutex_unlock(pooltgts->dpt_mutex);
 	if (rc == -DER_EXIST) {
 		D_ERROR(DF_UUID": already creating or cleaning up\n",
@@ -718,7 +722,7 @@ ds_mgmt_hdlr_tgt_create(crt_rpc_t *tc_req)
 
 	tca.tca_scm_size  = tc_in->tc_scm_size;
 	tca.tca_nvme_size = tc_in->tc_nvme_size;
-	rc = pthread_create(&thread, NULL, tgt_create_preallocate, &tca);
+	rc = pthread_create(&thread, NULL, tgt_create_preallocate, &tca);  // 启动线程在/mnt/daos/NEWBORNS目录下, 创建池目录和vos文件, 并为vos文件预留大小
 	if (rc) {
 		rc = daos_errno2der(errno);
 		D_ERROR(DF_UUID": failed to create thread for target file "
@@ -727,6 +731,7 @@ ds_mgmt_hdlr_tgt_create(crt_rpc_t *tc_req)
 		goto out;
 	}
 
+	// 等线程退出
 	for (;;) {
 		void *res;
 
@@ -775,11 +780,12 @@ ds_mgmt_hdlr_tgt_create(crt_rpc_t *tc_req)
 		/* A zero size accommodates the existing file */
 		vpa.vpa_scm_size = 0;
 		vpa.vpa_nvme_size = tc_in->tc_nvme_size / dss_tgt_nr;
-		rc = dss_thread_collective(tgt_vos_create_one, &vpa, 0);
+		rc = dss_thread_collective(tgt_vos_create_one, &vpa, 0);  // 创建vos-pool, 主要是vos层的处理, 待详细分析
 		if (rc)
 			goto out;
 
 		/** ready for prime time, move away from NEWBORNS dir */
+		// 重命名, 从/mnt/daos/NEWBORNS/xxx目录移动到/mnt/daos/xxx目录
 		rc = rename(tca.tca_newborn, tca.tca_path);
 		if (rc < 0) {
 			rc = daos_errno2der(errno);
@@ -796,12 +802,13 @@ ds_mgmt_hdlr_tgt_create(crt_rpc_t *tc_req)
 	if (rank == NULL)
 		D_GOTO(out, rc = -DER_NOMEM);
 
-	rc = crt_group_rank(NULL, rank);
+	rc = crt_group_rank(NULL, rank);  // 获取自己的rank值
 	if (rc)
 		D_GOTO(out, rc);
 	tc_out->tc_ranks.ca_arrays = rank;
 	tc_out->tc_ranks.ca_count  = 1;
 
+	// 启动pool, 主要就是加入全局哈希链表pool_cache中
 	rc = ds_pool_start(tc_in->tc_pool_uuid);
 	if (rc)
 		D_ERROR(DF_UUID": failed to start pool: "DF_RC"\n",
@@ -828,7 +835,7 @@ out_rec:
 	D_FREE(tca.tca_ptrec);
 out_reply:
 	tc_out->tc_rc = rc;
-	rc = crt_reply_send(tc_req);
+	rc = crt_reply_send(tc_req);  // 发送应答
 	if (rc)
 		D_FREE(rank);
 }

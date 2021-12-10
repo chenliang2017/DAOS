@@ -69,7 +69,7 @@ __gurt_list_add(d_list_t *newe, d_list_t *prev, d_list_t *next)
  * \param[in] head	list to add it to
  */
 static inline void
-d_list_add(d_list_t *newe, d_list_t *head)
+d_list_add(d_list_t *newe, d_list_t *head)  // 插入到head后面
 {
 	__gurt_list_add(newe, head, head->next);
 }

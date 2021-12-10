@@ -1677,7 +1677,7 @@ rdb_callbackd(void *arg)
 }
 
 static int
-rdb_raft_step_up(struct rdb *db, uint64_t term)
+rdb_raft_step_up(struct rdb *db, uint64_t term)// 非leader变成leader时触发
 {
 	msg_entry_t		mentry;
 	msg_entry_response_t	mresponse;
@@ -1748,9 +1748,9 @@ rdb_raft_check_state(struct rdb *db, const struct rdb_raft_state *state,
 	if (!state->drs_leader && leader) {
 		/* In this case, raft currently always returns zero. */
 		D_ASSERTF(raft_rc == 0, "%d\n", raft_rc);
-		step_up_rc = rdb_raft_step_up(db, term);
-	} else if (state->drs_leader && !leader) {
-		rdb_raft_step_down(db, state->drs_term);
+		step_up_rc = rdb_raft_step_up(db, term);  	// 从非leader变成leader
+	} else if (state->drs_leader && !leader) {	
+		rdb_raft_step_down(db, state->drs_term);	// 从leader变成非leader	
 	}
 
 	/*

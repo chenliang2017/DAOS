@@ -581,7 +581,7 @@ ds_pool_start_ec_eph_query_ult(struct ds_pool *pool)
 		return 0;
 
 	rc = dss_ult_create(tgt_ec_eph_query_ult, pool, DSS_XS_SYS, 0,
-			    DSS_DEEP_STACK_SZ, &ec_eph_query_ult);
+			    DSS_DEEP_STACK_SZ, &ec_eph_query_ult);  // EC获取版本相关功能
 	if (rc != 0) {
 		D_ERROR(DF_UUID": failed create ec eph equery ult: %d\n",
 			DP_UUID(pool->sp_uuid), rc);
@@ -649,7 +649,7 @@ ds_pool_start(uuid_t uuid)
 	 * the pool is started already.
 	 */
 	rc = daos_lru_ref_hold(pool_cache, (void *)uuid, sizeof(uuid_t),
-			       NULL /* create_args */, &llink);
+			       NULL /* create_args */, &llink);  // 查找key
 	if (rc == 0) {
 		pool = pool_obj(llink);
 		if (pool->sp_stopping) {
@@ -668,17 +668,17 @@ ds_pool_start(uuid_t uuid)
 
 	/* Start it by creating the ds_pool object and hold the reference. */
 	rc = daos_lru_ref_hold(pool_cache, (void *)uuid, sizeof(uuid_t), &arg,
-			       &llink);
+			       &llink);  // 插入全局哈希链表中
 	if (rc != 0) {
 		D_ERROR(DF_UUID": failed to start pool: %d\n", DP_UUID(uuid),
 			rc);
 		return rc;
 	}
 
-	pool = pool_obj(llink);
+	pool = pool_obj(llink);  // 反查到pool
 
 	rc = dss_ult_create(pool_fetch_hdls_ult, pool, DSS_XS_SYS,
-			    0, 0, NULL);
+			    0, 0, NULL);  // 获取所有链接到pool的链接句柄, 存储在pool->sp_iv_ns中
 	if (rc != 0) {
 		D_ERROR(DF_UUID": failed to create fetch ult: %d\n",
 			DP_UUID(uuid), rc);
@@ -686,7 +686,7 @@ ds_pool_start(uuid_t uuid)
 	}
 
 	pool->sp_fetch_hdls = 1;
-	rc = ds_pool_start_ec_eph_query_ult(pool);
+	rc = ds_pool_start_ec_eph_query_ult(pool);  // EC相关
 	if (rc != 0) {
 		D_ERROR(DF_UUID": failed to start ec eph query ult: %d\n",
 			DP_UUID(uuid), rc);

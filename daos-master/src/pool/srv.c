@@ -46,7 +46,7 @@ init(void)
 	if (unlikely(ec_agg_disabled))
 		D_WARN("EC aggregation is disabled.\n");
 
-	ds_pool_rsvc_class_register();
+	ds_pool_rsvc_class_register();  // 注册服务
 
 	bio_register_ract_ops(&nvme_reaction_ops);
 	return 0;
@@ -79,7 +79,7 @@ setup(void)
 
 	d_getenv_bool("DAOS_START_POOL_SVC", &start);
 	if (start)
-		return ds_pool_start_all();
+		return ds_pool_start_all();  // 启动所有的池
 	return 0;
 }
 

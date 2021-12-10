@@ -519,7 +519,7 @@ umem_class_init(struct umem_attr *uma, struct umem_instance *umm)
 
 	D_DEBUG(DB_MEM, "Instantiate memory class %s\n", umc->umc_name);
 
-	umm->umm_id		= umc->umc_id;
+	umm->umm_id			= umc->umc_id;
 	umm->umm_ops		= umc->umc_ops;
 	umm->umm_name		= umc->umc_name;
 	umm->umm_pool		= uma->uma_pool;

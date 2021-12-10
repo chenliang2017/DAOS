@@ -82,7 +82,7 @@ ds_mgmt_tgt_pool_destroy(uuid_t pool_uuid, d_rank_list_t *ranks)
 }
 
 static int
-ds_mgmt_tgt_pool_create_ranks(uuid_t pool_uuid, char *tgt_dev, d_rank_list_t *rank_list,
+ds_mgmt_tgt_pool_create_ranks(uuid_t pool_uuid/*池的UUID*/, char *tgt_dev/*pmem*/, d_rank_list_t *rank_list,
 			      size_t scm_size, size_t nvme_size)
 {
 	crt_rpc_t			*tc_req;
@@ -93,7 +93,15 @@ ds_mgmt_tgt_pool_create_ranks(uuid_t pool_uuid, char *tgt_dev, d_rank_list_t *ra
 	int				rc;
 	int				rc_cleanup;
 
+    // 向创池时指定的所有rank发送消息(MGMT_TGT_CREATE), 让他们创建池
+    // 所有engine会触发回调: ds_mgmt_hdlr_tgt_create
+    // ds_mgmt_hdlr_tgt_create: 创建文件夹/文件/...
+
+	// 是不是意味着只有主rank会走: ds_mgmt_drpc_pool_create ?
+
 	/* Collective RPC to all of targets of the pool */
+	// 构造发送 MGMT_TGT_CREATE 消息
+	// 触发相关的rank回调: ds_mgmt_hdlr_tgt_create
 	topo = crt_tree_topo(CRT_TREE_KNOMIAL, 4);
 	opc = DAOS_RPC_OPCODE(MGMT_TGT_CREATE, DAOS_MGMT_MODULE,
 			      DAOS_MGMT_VERSION);
@@ -108,8 +116,8 @@ ds_mgmt_tgt_pool_create_ranks(uuid_t pool_uuid, char *tgt_dev, d_rank_list_t *ra
 
 	tc_in = crt_req_get(tc_req);
 	D_ASSERT(tc_in != NULL);
-	uuid_copy(tc_in->tc_pool_uuid, pool_uuid);
-	tc_in->tc_tgt_dev = tgt_dev;
+	uuid_copy(tc_in->tc_pool_uuid, pool_uuid);	// UUID
+	tc_in->tc_tgt_dev = tgt_dev;				// "pmem"
 	tc_in->tc_scm_size = scm_size;
 	tc_in->tc_nvme_size = nvme_size;
 	rc = dss_rpc_send(tc_req);
@@ -120,6 +128,8 @@ ds_mgmt_tgt_pool_create_ranks(uuid_t pool_uuid, char *tgt_dev, d_rank_list_t *ra
 			DP_UUID(pool_uuid), DP_RC(rc));
 		D_GOTO(decref, rc);
 	}
+
+    // 阻塞等待应答, 跑到这里, 已经收到了应答, 表示对端已经执行完了要求的任务
 
 	tc_out = crt_reply_get(tc_req);
 	rc = tc_out->tc_rc;
@@ -150,8 +160,8 @@ decref:
 }
 
 static int
-ds_mgmt_pool_svc_create(uuid_t pool_uuid, int ntargets, const char *group, d_rank_list_t *ranks,
-			daos_prop_t *prop, d_rank_list_t *svc_list, size_t domains_nr,
+ds_mgmt_pool_svc_create(uuid_t pool_uuid/*池的uuid*/, int ntargets/*ranks的数量*/, const char *group, d_rank_list_t *ranks/*承载池的rank列表*/,
+			daos_prop_t *prop/*池的属性*/, d_rank_list_t *svc_list, size_t domains_nr,
 			uint32_t *domains)
 {
 	D_DEBUG(DB_MGMT, DF_UUID": all tgts created, setting up pool "
@@ -162,9 +172,9 @@ ds_mgmt_pool_svc_create(uuid_t pool_uuid, int ntargets, const char *group, d_ran
 }
 
 int
-ds_mgmt_create_pool(uuid_t pool_uuid, const char *group, char *tgt_dev,
-		    d_rank_list_t *targets, size_t scm_size, size_t nvme_size,
-		    daos_prop_t *prop, uint32_t svc_nr, d_rank_list_t **svcp,
+ds_mgmt_create_pool(uuid_t pool_uuid/*池的uuid*/, const char *group, char *tgt_dev/*pmem*/,
+		    d_rank_list_t *targets/*承载池的rank列表*/, size_t scm_size, size_t nvme_size,
+		    daos_prop_t *prop/*池的属性*/, uint32_t svc_nr/*pool_srv的副本数*/, d_rank_list_t **svcp,
 		    int domains_nr, uint32_t *domains)
 {
 	d_rank_list_t			*filtered_targets = NULL;
@@ -176,6 +186,7 @@ ds_mgmt_create_pool(uuid_t pool_uuid, const char *group, char *tgt_dev,
 	/* Sanity check targets versus cart's current primary group members.
 	 * If any targets not in PG, flag error before MGMT_TGT_ corpcs fail.
 	 */
+	// engine从server侧获取的rank的总数 
 	rc = crt_group_size(NULL, &pg_size);
 	D_ASSERTF(rc == 0, ""DF_RC"\n", DP_RC(rc));
 	pg_ranks = d_rank_list_alloc(pg_size);
@@ -189,12 +200,19 @@ ds_mgmt_create_pool(uuid_t pool_uuid, const char *group, char *tgt_dev,
 		D_GOTO(out, rc);
 	}
 	/* Remove any targets not found in pg_ranks */
+	// 从filtered_targets中移除一些不在pg_ranks中的rank
 	d_rank_list_filter(pg_ranks, filtered_targets, false /* exclude */);
-	if (!d_rank_list_identical(filtered_targets, targets)) {
+	if (!d_rank_list_identical(filtered_targets, targets)) {  // 如果确实有些rank在filtered_targets中, 但是不在pg_ranks中, 创池失败
 		D_ERROR("some ranks not found in cart primary group\n");
 		D_GOTO(out, rc = -DER_OOG);
 	}
 
+	// 走到这里, 说明创池的rank和server告知engine的是一致的
+	// 意思是：创池的rank只能是所有rank的子集
+
+	// 承担池的所有rank上执行创tgt_pool的动作, 执行函数为: ds_mgmt_hdlr_tgt_create
+	// 是不是意味着只有一个rank会跑到这里？？？ --> 只有一个rank跑到这里
+	// 哪一个rank会跑到这里呢？？？
 	rc = ds_mgmt_tgt_pool_create_ranks(pool_uuid, tgt_dev, targets,
 					   scm_size, nvme_size);
 	if (rc != 0) {
@@ -204,12 +222,16 @@ ds_mgmt_create_pool(uuid_t pool_uuid, const char *group, char *tgt_dev,
 	}
 
 	/** allocate service rank list */
+	// 申请pool_srv的空间
+	// svc_nr创池时可以指定, 不指定时默认是3个; 指定时, 要求是奇数个; 最大值为13; rank数量小于3时,pool_srv副本数为1
 	*svcp = d_rank_list_alloc(svc_nr);
 	if (*svcp == NULL) {
 		rc = -DER_NOMEM;
 		goto out;
 	}
 
+	// 创建pool_srv
+	// 会通过raft选举出pool_srv的leader, 所以要求pool_srv的个数为奇数
 	rc = ds_mgmt_pool_svc_create(pool_uuid, targets->rl_nr, group, targets, prop, *svcp,
 				     domains_nr, domains);
 	if (rc) {
@@ -219,7 +241,7 @@ ds_mgmt_create_pool(uuid_t pool_uuid, const char *group, char *tgt_dev,
 	}
 
 out_svcp:
-	if (rc) {
+	if (rc) {  // 失败处理
 		d_rank_list_free(*svcp);
 		*svcp = NULL;
 

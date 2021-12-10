@@ -275,7 +275,7 @@ dss_collective_internal(int (*func)(void *), void *arg, bool thread,
 			unsigned int flags)
 {
 	int				rc;
-	struct dss_coll_ops		coll_ops = { 0 };
+	struct dss_coll_ops			coll_ops = { 0 };
 	struct dss_coll_args		coll_args = { 0 };
 
 	coll_ops.co_func	= func;

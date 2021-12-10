@@ -79,13 +79,13 @@ struct cont_ec_agg {
 struct cont_svc {
 	uuid_t			cs_pool_uuid;
 	uint64_t		cs_id;
-	struct ds_rsvc	       *cs_rsvc;
+	struct ds_rsvc  *cs_rsvc;	// 指向rsvc结构的指针
 	ABT_rwlock		cs_lock;
 	rdb_path_t		cs_root;	/* root KVS */
 	rdb_path_t		cs_uuids;	/* container UUIDs KVS */
 	rdb_path_t		cs_conts;	/* container KVS */
 	rdb_path_t		cs_hdls;	/* container handle KVS */
-	struct ds_pool	       *cs_pool;
+	struct ds_pool  *cs_pool;
 
 	/* Manage the EC aggregation epoch */
 	struct sched_request   *cs_ec_leader_ephs_req;

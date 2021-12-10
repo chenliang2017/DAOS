@@ -341,13 +341,14 @@ daos_prop_val_2_co_status(uint64_t val, struct daos_co_status *co_status)
 }
 
 struct daos_prop_entry {
-	/** property type, see enum daos_pool_props/daos_cont_props */
+	/** property type, see enum daos_pool_props/daos_cont_props, 类型 */
 	uint32_t		 dpe_type;
 	/** reserved for future usage (for 64 bits alignment now) */
 	uint32_t		 dpe_reserv;
 	/**
 	 * value can be either a uint64_t, or a string, or any other type
 	 * data such as the struct daos_acl pointer.
+	 * 值
 	 */
 	union {
 		uint64_t	 dpe_val;
@@ -434,11 +435,11 @@ daos_label_is_valid(const char *label)
 
 /** daos properties, for pool or container */
 typedef struct {
-	/** number of entries */
+	/** number of entries, 属性的数量 */
 	uint32_t		 dpp_nr;
 	/** reserved for future usage (for 64 bits alignment now) */
 	uint32_t		 dpp_reserv;
-	/** property entries array */
+	/** property entries array, 属性链表 */
 	struct daos_prop_entry	*dpp_entries;
 } daos_prop_t;
 

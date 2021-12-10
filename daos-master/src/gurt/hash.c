@@ -468,8 +468,8 @@ d_hash_rec_insert(struct d_hash_table *htable, const void *key,
 	int			 rc = 0;
 
 	D_ASSERT(key != NULL && ksize != 0);
-	idx = ch_key_hash(htable, key, ksize);
-	bucket = &htable->ht_buckets[idx];
+	idx = ch_key_hash(htable, key, ksize);  // key哈希到htable上的槽位
+	bucket = &htable->ht_buckets[idx];  // 操作key哈希到的槽位
 
 	ch_bucket_lock(htable, idx, false);
 
@@ -480,7 +480,7 @@ d_hash_rec_insert(struct d_hash_table *htable, const void *key,
 			D_GOTO(out_unlock, rc = -DER_EXIST);
 		}
 	}
-	ch_rec_insert_addref(htable, bucket, link);
+	ch_rec_insert_addref(htable, bucket, link);  // 插入到htable中
 
 out_unlock:
 	ch_bucket_unlock(htable, idx, false);

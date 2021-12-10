@@ -192,9 +192,9 @@ struct pool_buf {
 	uint32_t	pb_csum;
 	/** summary of domain_nr, node_nr, target_nr, buffer size */
 	uint32_t	pb_nr;
-	uint32_t	pb_domain_nr;
-	uint32_t	pb_node_nr;
-	uint32_t	pb_target_nr;
+	uint32_t	pb_domain_nr;	//
+	uint32_t	pb_node_nr;		// rank的数量
+	uint32_t	pb_target_nr;   // target的数量
 	uint32_t	pb_padding;
 
 	/** buffer body */

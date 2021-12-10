@@ -75,7 +75,7 @@ unsigned int pl_obj_shard2grp_index(struct daos_obj_shard_md *shard_md,
  */
 struct failed_shard {
 	d_list_t        fs_list;
-	void		*fs_data;
+	void			*fs_data;
 	uint32_t        fs_shard_idx;
 	uint32_t        fs_fseq;
 	uint32_t        fs_tgt_id;

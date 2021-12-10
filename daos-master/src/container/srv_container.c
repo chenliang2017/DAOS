@@ -159,7 +159,7 @@ ds_cont_svc_init(struct cont_svc **svcp, const uuid_t pool_uuid, uint64_t id,
 	struct cont_svc	       *svc;
 	int			rc;
 
-	D_ALLOC_PTR(svc);
+	D_ALLOC_PTR(svc);  // 申请空间
 	if (svc == NULL)
 		return -DER_NOMEM;
 	rc = cont_svc_init(svc, pool_uuid, id, rsvc);

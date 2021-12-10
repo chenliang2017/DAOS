@@ -40,6 +40,7 @@
 /* Define for RPC enum population below */
 #define X(a, b, c, d, e) a
 
+// 展开后, 生成两个宏: RSVC_START = 0, RSVC_STOP = 1
 enum rsvc_operation {
 	RSVC_PROTO_SRV_RPC_LIST
 };

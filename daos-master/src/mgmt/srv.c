@@ -159,7 +159,7 @@ process_drpc_request(Drpc__Call *drpc_req, Drpc__Response *drpc_resp)
 static struct dss_drpc_handler mgmt_drpc_handlers[] = {
 	{
 		.module_id = DRPC_MODULE_MGMT,
-		.handler = process_drpc_request
+		.handler = process_drpc_request		// server发过来的消息函数入口
 	},
 	{
 		.module_id = 0,
@@ -452,8 +452,8 @@ struct dss_module mgmt_module = {
 	.sm_fini		= ds_mgmt_fini,
 	.sm_setup		= ds_mgmt_setup,
 	.sm_cleanup		= ds_mgmt_cleanup,
-	.sm_proto_fmt		= &mgmt_proto_fmt,
+	.sm_proto_fmt		= &mgmt_proto_fmt,		// 注册的CART协议集
 	.sm_cli_count		= MGMT_PROTO_CLI_COUNT,
-	.sm_handlers		= mgmt_handlers,
-	.sm_drpc_handlers	= mgmt_drpc_handlers,
+	.sm_handlers		= mgmt_handlers,		// 注册的CART协议句柄
+	.sm_drpc_handlers	= mgmt_drpc_handlers,	// dRPC句柄, 与server交互
 };

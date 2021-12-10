@@ -1610,6 +1610,7 @@ error_tree:
  * \param buf		[IN]	The buffer to input pool components.
  * \param version	[IN]	Version for the new created pool map.
  * \param mapp		[OUT]	The returned pool map.
+ * 创建map
  */
 int
 pool_map_create(struct pool_buf *buf, uint32_t version, struct pool_map **mapp)

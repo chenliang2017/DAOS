@@ -1359,7 +1359,7 @@ crt_group_rank_s2p(crt_group_t *subgrp, d_rank_t rank_in, d_rank_t *rank_out)
 }
 
 int
-crt_group_size(crt_group_t *grp, uint32_t *size)
+crt_group_size(crt_group_t *grp, uint32_t *size)  // engine启动时server告知的rank的总数
 {
 	struct crt_grp_priv	*grp_priv;
 	int			 rc = 0;

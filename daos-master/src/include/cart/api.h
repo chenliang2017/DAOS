@@ -366,7 +366,7 @@ crt_reply_send(crt_rpc_t *req);
  * \return                     pointer to request buffer
  */
 static inline void *
-crt_req_get(crt_rpc_t *rpc)
+crt_req_get(crt_rpc_t *rpc)  // 获取入参指针
 {
 	return rpc->cr_input;
 }
@@ -415,7 +415,7 @@ crt_req_dst_tag_get(crt_rpc_t *req, uint32_t *tag);
  * \return                     pointer to reply buffer
  */
 static inline void *
-crt_reply_get(crt_rpc_t *rpc)
+crt_reply_get(crt_rpc_t *rpc)// 获取出参指针
 {
 	return rpc->cr_output;
 }

@@ -146,8 +146,8 @@ struct  _Mgmt__PoolCreateResp
   /*
    * pool service replica ranks
    */
-  size_t n_svc_reps;
-  uint32_t *svc_reps;
+  size_t n_svc_reps;		// pool_srv的个数 
+  uint32_t *svc_reps;		// 所有pool_srv的链表
   /*
    * pool target ranks
    */

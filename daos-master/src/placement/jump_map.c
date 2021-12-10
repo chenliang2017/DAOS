@@ -154,7 +154,7 @@ jm_obj_placement_get(struct pl_jump_map *jmap, struct daos_obj_md *md,
 
 	/* Get the Object ID and the Object class */
 	oid = md->omd_id;
-	oc_attr = daos_oclass_attr_find(oid, NULL);
+	oc_attr = daos_oclass_attr_find(oid, NULL);  // 通过oid找oclass
 
 	if (oc_attr == NULL) {
 		D_ERROR("Can not find obj class, invalid oid="DF_OID"\n",
@@ -1042,7 +1042,7 @@ jump_map_obj_place(struct pl_map *map, struct daos_obj_md *md,
 		   struct daos_obj_shard_md *shard_md,
 		   struct pl_obj_layout **layout_pp)
 {
-	struct pl_jump_map	*jmap;
+	struct pl_jump_map		*jmap;
 	struct pl_obj_layout	*layout = NULL;
 	struct pl_obj_layout	*extend_layout = NULL;
 	struct jm_obj_placement	jmop;
@@ -1054,8 +1054,8 @@ jump_map_obj_place(struct pl_map *map, struct daos_obj_md *md,
 	uint32_t		allow_status;
 	int			rc;
 
-	jmap = pl_map2jmap(map);
-	oid = md->omd_id;
+	jmap = pl_map2jmap(map);	// pool_map找pl_jump_map
+	oid = md->omd_id;			// 对象ID
 	D_DEBUG(DB_PL, "Determining location for object: "DF_OID", ver: %d\n",
 		DP_OID(oid), md->omd_ver);
 
@@ -1074,7 +1074,7 @@ jump_map_obj_place(struct pl_map *map, struct daos_obj_md *md,
 		D_GOTO(out, rc);
 	}
 
-	obj_layout_dump(oid, layout);
+	obj_layout_dump(oid, layout);  // 打印
 
 	rc = pool_map_find_domain(jmap->jmp_map.pl_poolmap,
 				  PO_COMP_TP_ROOT, PO_COMP_ID_ALL,
@@ -1331,10 +1331,10 @@ out:
 struct pl_map_ops       jump_map_ops = {
 	.o_create               = jump_map_create,
 	.o_destroy              = jump_map_destroy,
-	.o_query		= jump_map_query,
+	.o_query				= jump_map_query,
 	.o_print                = jump_map_print,
 	.o_obj_place            = jump_map_obj_place,
 	.o_obj_find_rebuild     = jump_map_obj_find_rebuild,
 	.o_obj_find_reint       = jump_map_obj_find_reint,
-	.o_obj_find_addition      = jump_map_obj_find_addition,
+	.o_obj_find_addition    = jump_map_obj_find_addition,
 };

@@ -280,7 +280,7 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 		flags |= VOS_POF_EXCL;
 
 	uuid_copy(ukey.uuid, uuid);
-	rc = pool_lookup(&ukey, &pool);
+	rc = pool_lookup(&ukey, &pool);  // 查看一下全局参数中是否已经存在这个uuid的池
 	if (rc == 0) {
 		D_ASSERT(pool != NULL);
 		D_ERROR("Found already opened(%d) pool:%p dying(%d)\n",
@@ -290,11 +290,13 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 	}
 
 	/* Path must be a file with a certain size when size argument is 0 */
+	// 文件不存在或者大小为0
 	if (!scm_sz && access(path, F_OK) == -1) {
 		D_ERROR("File not accessible (%d) when size is 0\n", errno);
 		return daos_errno2der(errno);
 	}
 
+	// 为文件生成一块持久化内存
 	ph = vos_pmemobj_create(path, POBJ_LAYOUT_NAME(vos_pool_layout), scm_sz,
 				0600);
 	if (!ph) {
@@ -304,7 +306,7 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 		return daos_errno2der(rc);
 	}
 
-	rc = pmemobj_ctl_set(ph, "stats.enabled", &enabled);
+	rc = pmemobj_ctl_set(ph, "stats.enabled", &enabled);  // 使能开关
 	if (rc) {
 		D_ERROR("Enable SCM usage statistics failed. "DF_RC"\n",
 			DP_RC(rc));
@@ -312,7 +314,7 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 		goto close;
 	}
 
-	pool_df = vos_pool_pop2df(ph);
+	pool_df = vos_pool_pop2df(ph);  // 句柄转换
 
 	/* If the file is fallocated separately we need the fallocated size
 	 * for setting in the root object.

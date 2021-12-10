@@ -10,6 +10,7 @@
  *
  * This server module implements a generic framework for different classes of
  * replicated service servers.
+ * 分布式服务的接口类
  */
 
 #ifndef DAOS_SRV_RSVC_H
@@ -22,7 +23,7 @@
 /** List of all replicated service classes */
 enum ds_rsvc_class_id {
 	DS_RSVC_CLASS_MGMT,
-	DS_RSVC_CLASS_POOL,
+	DS_RSVC_CLASS_POOL,  // 池服务
 	DS_RSVC_CLASS_TEST,
 	DS_RSVC_CLASS_COUNT
 };
@@ -62,10 +63,12 @@ struct ds_rsvc_class {
 	/**
 	 * Step up to be the new leader. If the DB is new (i.e., has not been
 	 * bootstrapped), return +DER_UNINIT.
+	 * 成为leader后触发回调
 	 */
 	int (*sc_step_up)(struct ds_rsvc *svc);
 
 	/** Step down from the current leadership. */
+	// 由leader变成非leader时触发回调
 	void (*sc_step_down)(struct ds_rsvc *svc);
 
 	/**
@@ -77,6 +80,7 @@ struct ds_rsvc_class {
 	/**
 	 * Distribute the system/pool map in the system/pool. This callback is
 	 * optional.
+	 * 向所有的rank分发map
 	 */
 	int (*sc_map_dist)(struct ds_rsvc *svc);
 };
@@ -88,27 +92,27 @@ void ds_rsvc_class_unregister(enum ds_rsvc_class_id id);
 /** Replicated service state in ds_rsvc.s_term */
 enum ds_rsvc_state {
 	DS_RSVC_UP_EMPTY,	/**< up but DB newly-created and empty */
-	DS_RSVC_UP,			/**< up and ready to serve */
+	DS_RSVC_UP,			/**< up and ready to serve; leader */
 	DS_RSVC_DRAINING,	/**< stepping down */
 	DS_RSVC_DOWN		/**< down */
 };
 
 /** Replicated service */
 struct ds_rsvc {
-	d_list_t		s_entry;	/* in rsvc_hash */
-	enum ds_rsvc_class_id	s_class;
-	d_iov_t			s_id;		/**< for lookups */
-	char		       *s_name;		/**< for printing */
-	struct rdb	       *s_db;		/**< DB handle */
-	char		       *s_db_path;
-	uuid_t			s_db_uuid;
-	int			s_ref;
+	d_list_t				s_entry;	/* in rsvc_hash */
+	enum ds_rsvc_class_id	s_class;	// 类型
+	d_iov_t				s_id;			/**< for lookups */
+	char		       *s_name;			/**< for printing */
+	struct rdb	       *s_db;			/**< DB handle */
+	char		       *s_db_path;		// 生成的文件名 /mnt/daos/xxx/rdb-pool
+	uuid_t			s_db_uuid;			// UUID
+	int				s_ref;
 	ABT_mutex		s_mutex;	/* for the following members */
 	bool			s_stop;
 	uint64_t		s_term;		/**< leader term */
 	enum ds_rsvc_state	s_state;
 	ABT_cond		s_state_cv;
-	int			s_leader_ref;	/* on leader state */
+	int				s_leader_ref;	/* on leader state */
 	ABT_cond		s_leader_ref_cv;
 	bool			s_map_dist;	/* has a map dist request? */
 	ABT_cond		s_map_dist_cv;

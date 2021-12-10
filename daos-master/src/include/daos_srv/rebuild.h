@@ -21,10 +21,10 @@
  * associated targets
  */
 typedef enum {
-	RB_OP_FAIL,
+	RB_OP_FAIL,			// 删除
 	RB_OP_DRAIN,
 	RB_OP_REINT,
-	RB_OP_EXTEND,
+	RB_OP_EXTEND,		// 扩容
 	RB_OP_RECLAIM,
 } daos_rebuild_opc_t;
 

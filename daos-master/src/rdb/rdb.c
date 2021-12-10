@@ -25,10 +25,10 @@ static int rdb_start_internal(daos_handle_t pool, daos_handle_t mc,
  * Create an RDB replica at \a path with \a uuid, \a size, and \a replicas, and
  * start it with \a cbs and \a arg.
  *
- * \param[in]	path		replica path
+ * \param[in]	path		replica path, /mnt/daos/xxx/rdb-pool
  * \param[in]	uuid		database UUID
  * \param[in]	size		replica size in bytes
- * \param[in]	replicas	list of replica ranks
+ * \param[in]	replicas	list of replica ranks, 承载服务的ranks集合
  * \param[in]	cbs		callbacks (not copied)
  * \param[in]	arg		argument for cbs
  * \param[out]	dbp		database

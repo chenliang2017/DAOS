@@ -32,7 +32,7 @@ typedef enum {
 } pl_map_type_t;
 
 struct pl_map_init_attr {
-	pl_map_type_t		ia_type;	// 分布算法
+	pl_map_type_t		ia_type;	// 分布算法, 默认使用jump hash
 	union {
 		struct pl_ring_init_attr {
 			pool_comp_type_t	domain;

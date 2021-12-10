@@ -33,7 +33,7 @@ struct rsvc_client {
 	unsigned int	sc_leader_aliveness;	/* 0 means dead */
 	uint64_t	sc_leader_term;
 	int		sc_leader_index;	/* in sc_ranks */
-	int		sc_next;		/* in sc_ranks */
+	int		sc_next;			/* in sc_ranks */
 };
 
 /** Return code of rsvc_client_complete_rpc() */

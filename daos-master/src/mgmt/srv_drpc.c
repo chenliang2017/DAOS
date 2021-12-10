@@ -293,6 +293,7 @@ create_pool_props(daos_prop_t **out_prop, char *owner, char *owner_grp,
 	uint32_t	idx = 0;
 	int		rc = 0;
 
+	// 权限列表
 	if (ace_list != NULL && ace_nr > 0) {
 		rc = daos_acl_from_strs(ace_list, ace_nr, &out_acl);
 		if (rc != 0)
@@ -301,6 +302,7 @@ create_pool_props(daos_prop_t **out_prop, char *owner, char *owner_grp,
 		entries++;
 	}
 
+	// 用户
 	if (owner != NULL && *owner != '\0') {
 		D_ASPRINTF(out_owner, "%s", owner);
 		if (out_owner == NULL)
@@ -309,6 +311,7 @@ create_pool_props(daos_prop_t **out_prop, char *owner, char *owner_grp,
 		entries++;
 	}
 
+	// 用户组
 	if (owner_grp != NULL && *owner_grp != '\0') {
 		D_ASPRINTF(out_owner_grp, "%s", owner_grp);
 		if (out_owner_grp == NULL)
@@ -356,6 +359,8 @@ err_out:
 	return rc;
 }
 
+// 只有一个rank收到这个东西, 具体是谁收到的? 待分析server代码
+// 可能是rank0, server只与rank0交互？？？
 void
 ds_mgmt_drpc_pool_create(Drpc__Call *drpc_req, Drpc__Response *drpc_resp)
 {
@@ -373,6 +378,7 @@ ds_mgmt_drpc_pool_create(Drpc__Call *drpc_req, Drpc__Response *drpc_resp)
 	int			 rc;
 
 	/* Unpack the inner request from the drpc call body */
+	// 解析出消息
 	req = mgmt__pool_create_req__unpack(&alloc.alloc, drpc_req->body.len,
 					    drpc_req->body.data);
 	if (alloc.oom || req == NULL) {
@@ -386,6 +392,7 @@ ds_mgmt_drpc_pool_create(Drpc__Call *drpc_req, Drpc__Response *drpc_resp)
 	if (req->n_tierbytes != DAOS_MEDIA_MAX)
 		D_GOTO(out, rc = -DER_INVAL);
 
+	// 解析出属性信息
 	if (req->n_properties > 0) {
 		rc = conv_req_props(&req_props, true,
 				    req->properties, req->n_properties);
@@ -395,12 +402,14 @@ ds_mgmt_drpc_pool_create(Drpc__Call *drpc_req, Drpc__Response *drpc_resp)
 		}
 	}
 
+	// 解析出创池时传入的rank列表(池在哪些rank上创建)
 	if (req->n_ranks > 0) {
 		targets = uint32_array_to_rank_list(req->ranks, req->n_ranks);
 		if (targets == NULL)
 			D_GOTO(out, rc = -DER_NOMEM);
 	}
 
+	// 解析出创池的UUID
 	rc = uuid_parse(req->uuid, pool_uuid);
 	if (rc != 0) {
 		D_ERROR("Unable to parse pool UUID %s: "DF_RC"\n", req->uuid,
@@ -409,8 +418,9 @@ ds_mgmt_drpc_pool_create(Drpc__Call *drpc_req, Drpc__Response *drpc_resp)
 	}
 	D_DEBUG(DB_MGMT, DF_UUID": creating pool\n", DP_UUID(pool_uuid));
 
-	rc = create_pool_props(&base_props, req->user, req->usergroup,
-			       (const char **)req->acl, req->n_acl);
+	// 获取创池的: 用户/用户组/权限列表
+	rc = create_pool_props(&base_props, req->user/*用户*/, req->usergroup/*用户组*/,
+			       (const char **)req->acl/*权限列表*/, req->n_acl/*权限列表数量*/);
 	if (rc != 0)
 		goto out;
 
@@ -426,10 +436,10 @@ ds_mgmt_drpc_pool_create(Drpc__Call *drpc_req, Drpc__Response *drpc_resp)
 	}
 
 	/* Ranks to allocate targets (in) & svc for pool replicas (out). */
-	rc = ds_mgmt_create_pool(pool_uuid, req->sys, "pmem", targets,
+	rc = ds_mgmt_create_pool(pool_uuid/*池的uuid*/, req->sys, "pmem", targets/*承载池的rank列表*/,
 				 req->tierbytes[DAOS_MEDIA_SCM],
 				 req->tierbytes[DAOS_MEDIA_NVME],
-				 prop, req->numsvcreps, &svc,
+				 prop/*池的属性*/, req->numsvcreps/*pool_srv的副本数*/, &svc,
 				 req->n_faultdomains, req->faultdomains);
 	if (rc != 0) {
 		D_ERROR("failed to create pool: "DF_RC"\n", DP_RC(rc));

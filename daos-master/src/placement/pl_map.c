@@ -372,7 +372,7 @@ pl_link2map(d_list_t *link)
 
 static uint32_t
 pl_hop_key_hash(struct d_hash_table *htab, const void *key,
-		unsigned int ksize)
+		unsigned int ksize)  // 通过key取哈希值
 {
 	D_ASSERT(ksize == sizeof(uuid_t));
 	return *((const uint32_t *)key);
@@ -380,16 +380,16 @@ pl_hop_key_hash(struct d_hash_table *htab, const void *key,
 
 static bool
 pl_hop_key_cmp(struct d_hash_table *htab, d_list_t *link,
-	       const void *key, unsigned int ksize)
+	       const void *key, unsigned int ksize)  // key值比较
 {
-	struct pl_map *map = pl_link2map(link);
+	struct pl_map *map = pl_link2map(link);  // 通过link字段, 反向找map
 
 	D_ASSERT(ksize == sizeof(uuid_t));
-	return !uuid_compare(map->pl_uuid, key);
+	return !uuid_compare(map->pl_uuid, key); // 比较key是否相同
 }
 
 static void
-pl_hop_rec_addref(struct d_hash_table *htab, d_list_t *link)
+pl_hop_rec_addref(struct d_hash_table *htab, d_list_t *link)  // link的索引加1
 {
 	struct pl_map *map = pl_link2map(link);
 
@@ -399,7 +399,7 @@ pl_hop_rec_addref(struct d_hash_table *htab, d_list_t *link)
 }
 
 static bool
-pl_hop_rec_decref(struct d_hash_table *htab, d_list_t *link)
+pl_hop_rec_decref(struct d_hash_table *htab, d_list_t *link)  // link的索引减1
 {
 	struct pl_map   *map = pl_link2map(link);
 	bool             zombie;
@@ -424,11 +424,11 @@ pl_hop_rec_free(struct d_hash_table *htab, d_list_t *link)
 }
 
 static d_hash_table_ops_t pl_hash_ops = {
-	.hop_key_hash           = pl_hop_key_hash,
-	.hop_key_cmp            = pl_hop_key_cmp,
-	.hop_rec_addref         = pl_hop_rec_addref,
-	.hop_rec_decref         = pl_hop_rec_decref,
-	.hop_rec_free           = pl_hop_rec_free,
+	.hop_key_hash           = pl_hop_key_hash,		// 生成哈希
+	.hop_key_cmp            = pl_hop_key_cmp,		// key比较
+	.hop_rec_addref         = pl_hop_rec_addref,	// 索引加1
+	.hop_rec_decref         = pl_hop_rec_decref,	// 索引减1
+	.hop_rec_free           = pl_hop_rec_free,		// 释放map
 };
 
 /**

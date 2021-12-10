@@ -76,7 +76,7 @@ typedef struct {
 	/** list of ranks */
 	d_rank_t	*rl_ranks;  // 集群内部rank列表？？？
 	/** number of ranks */
-	uint32_t	rl_nr;
+	uint32_t	rl_nr;		// 数量
 } d_rank_list_t;
 
 typedef d_rank_list_t	*d_rank_list_ptr_t;
