@@ -1564,16 +1564,15 @@ int ABT_xstream_get_affinity(ABT_xstream xstream, int max_cpuids, int *cpuids,
 /* Private APIs                                                              */
 /*****************************************************************************/
 
-ABTU_ret_err int ABTI_xstream_create_primary(ABTI_global *p_global,
-                                             ABTI_xstream **pp_xstream)
+// 
+ABTU_ret_err int ABTI_xstream_create_primary(ABTI_global *p_global, ABTI_xstream **pp_xstream)
 {
     int abt_errno;
     ABTI_xstream *p_newxstream;
     ABTI_sched *p_sched;
 
     /* For the primary ES, a default scheduler is created. */
-    abt_errno =
-        ABTI_sched_create_basic(ABT_SCHED_DEFAULT, 0, NULL, NULL, &p_sched);
+    abt_errno = ABTI_sched_create_basic(ABT_SCHED_DEFAULT, 0, NULL, NULL, &p_sched);  // 创建一个basic类型的调度器, 绑定一个FIFO类型的池
     ABTI_CHECK_ERROR(abt_errno);
 
     abt_errno = xstream_create(p_global, p_sched, ABTI_XSTREAM_TYPE_PRIMARY, -1,
@@ -1755,7 +1754,7 @@ ABTU_ret_err static int xstream_create(ABTI_global *p_global,
     int abt_errno, init_stage = 0;
     ABTI_xstream *p_newxstream;
 
-    abt_errno = ABTU_malloc(sizeof(ABTI_xstream), (void **)&p_newxstream);
+    abt_errno = ABTU_malloc(sizeof(ABTI_xstream), (void **)&p_newxstream);  // 申请空间
     ABTI_CHECK_ERROR(abt_errno);
 
     p_newxstream->p_prev = NULL;
@@ -1778,7 +1777,7 @@ ABTU_ret_err static int xstream_create(ABTI_global *p_global,
     init_stage = 2;
 
     /* Set the main scheduler */
-    xstream_init_main_sched(p_newxstream, p_sched);
+    xstream_init_main_sched(p_newxstream, p_sched);  // xstream绑定调度器
 
     /* Create the root thread. */
     abt_errno =
@@ -1790,7 +1789,7 @@ ABTU_ret_err static int xstream_create(ABTI_global *p_global,
 
     /* Create the root pool. */
     abt_errno = ABTI_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_MPSC,
-                                       ABT_FALSE, &p_newxstream->p_root_pool);
+                                       ABT_FALSE, &p_newxstream->p_root_pool);  // 创建一个先入先出的池, 存放这个ES的所有调度器
     if (abt_errno != ABT_SUCCESS)
         goto FAILED;
     init_stage = 4;

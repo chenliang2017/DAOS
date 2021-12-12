@@ -72,7 +72,7 @@ static ABTD_atomic_uint32 g_ABTI_initialized =
  * @param[in] argv  unused parameter
  * @return Error code
  */
-int ABT_init(int argc, char **argv)
+int ABT_init(int argc, char **argv)//库初始化
 {
     ABTI_UNUSED(argc);
     ABTI_UNUSED(argv);

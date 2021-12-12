@@ -713,11 +713,11 @@ ABTU_ret_err int ABTI_sched_create_basic(ABT_sched_predef predef, int num_pools,
                                          ABTI_sched **pp_newsched)
 {
     int abt_errno;
-    ABT_pool_kind kind = ABT_POOL_FIFO;
+    ABT_pool_kind kind = ABT_POOL_FIFO;		// 默认是先入先出的池
     /* The default value is different from ABT_sched_create. */
     const ABT_bool def_automatic = ABT_TRUE;
     /* Always use MPMC pools */
-    const ABT_pool_access def_access = ABT_POOL_ACCESS_MPMC;
+    const ABT_pool_access def_access = ABT_POOL_ACCESS_MPMC;	// 对入队和出队的线程不做限制
 
     /* A pool array is provided, predef has to be compatible */
     if (pools != NULL) {
@@ -803,7 +803,7 @@ ABTU_ret_err int ABTI_sched_create_basic(ABT_sched_predef predef, int num_pools,
         switch (predef) {
             case ABT_SCHED_DEFAULT:
             case ABT_SCHED_BASIC:
-                num_pools = 1;
+                num_pools = 1;  // 默认只有一个池
                 break;
             case ABT_SCHED_BASIC_WAIT:
                 /* FIFO_WAIT is default pool for use with BASIC_WAIT sched */
@@ -832,8 +832,7 @@ ABTU_ret_err int ABTI_sched_create_basic(ABT_sched_predef predef, int num_pools,
             pool_list[p] = ABT_POOL_NULL;
         for (p = 0; p < num_pools; p++) {
             ABTI_pool *p_newpool;
-            abt_errno =
-                ABTI_pool_create_basic(kind, def_access, ABT_TRUE, &p_newpool);
+            abt_errno = ABTI_pool_create_basic(kind, def_access, ABT_TRUE, &p_newpool);
             if (ABTI_IS_ERROR_CHECK_ENABLED && abt_errno != ABT_SUCCESS) {
                 /* Remove pools that are already created. */
                 int i;

@@ -223,7 +223,7 @@ struct ABTI_unit_to_thread_entry {
 struct ABTI_global {
     int max_xstreams;             /* Largest rank used in Argobots. */
     int num_xstreams;             /* Current # of ESs */
-    ABTI_xstream *p_xstream_head; /* List of ESs (head). The list is sorted. */
+    ABTI_xstream *p_xstream_head; /* List of ESs (head). The list is sorted(按rank的序号升序排列). */
     ABTD_spinlock
         xstream_list_lock; /* Spinlock protecting ES list. Any read and
                             * write to this list requires a lock.*/
@@ -296,8 +296,8 @@ struct ABTI_xstream {
     ABTI_xstream *p_prev;
     ABTI_xstream *p_next;
 
-    int rank;                 /* Rank */
-    ABTI_xstream_type type;   /* Type */
+    int rank;                 /* Rank, ES的编号,  从零开始 */
+    ABTI_xstream_type type;   /* Type, 类型：主、副 */
     ABTD_atomic_int state;    /* State (ABT_xstream_state) */
     ABTI_sched *p_main_sched; /* Main scheduler, which is the bottom of the
                                * linked list of schedulers */
