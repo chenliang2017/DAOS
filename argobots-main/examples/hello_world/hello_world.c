@@ -74,29 +74,29 @@ int main(int argc, char **argv)
 
     /* Create secondary execution streams. */
     for (i = 1; i < num_xstreams; i++) {
-        ABT_xstream_create(ABT_SCHED_NULL, &xstreams[i]);
+        ABT_xstream_create(ABT_SCHED_NULL, &xstreams[i]);  // 创建一个stream
     }
 
     /* Get default pools. */
     for (i = 0; i < num_xstreams; i++) {
-        ABT_xstream_get_main_pools(xstreams[i], 1, &pools[i]);
+        ABT_xstream_get_main_pools(xstreams[1], 1, &pools[1]);  // 获取主调度器的池
     }
 
     /* Create ULTs. */
-    for (i = 0; i < num_threads; i++) {
+    for (i = 0; i < num_threads; i++) {  // 创建8个协程
         int pool_id = i % num_xstreams;
         thread_args[i].tid = i;
-        ABT_thread_create(pools[pool_id], hello_world, &thread_args[i],
-                          ABT_THREAD_ATTR_NULL, &threads[i]);
+        ABT_thread_create(pools[1], hello_world, &thread_args[i],
+                          ABT_THREAD_ATTR_NULL, &threads[i]);  // 向池里加协程任务
     }
 
     /* Join and free ULTs. */
-    for (i = 0; i < num_threads; i++) {
+    for (i = 0; i < num_threads; i++) {  // 等协程任务结束
         ABT_thread_free(&threads[i]);
     }
 
     /* Join and free secondary execution streams. */
-    for (i = 1; i < num_xstreams; i++) {
+    for (i = 1; i < num_xstreams; i++) {  // 等xstream结束
         ABT_xstream_join(xstreams[i]);
         ABT_xstream_free(&xstreams[i]);
     }

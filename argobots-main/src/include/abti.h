@@ -296,15 +296,16 @@ struct ABTI_xstream {
     ABTI_xstream *p_prev;
     ABTI_xstream *p_next;
 
-    int rank;                 /* Rank, ESµƒ±‡∫≈,  ¥”¡„ø™ º */
-    ABTI_xstream_type type;   /* Type, ¿‡–Õ£∫÷˜°¢∏± */
+    int rank;                 /* Rank, xstreamÁöÑÁºñÂè∑,‰ªé0ÂºÄÂßã */
+    ABTI_xstream_type type;   /* Type */
     ABTD_atomic_int state;    /* State (ABT_xstream_state) */
     ABTI_sched *p_main_sched; /* Main scheduler, which is the bottom of the
-                               * linked list of schedulers */
+                               * linked list of schedulers 
+                               * ‰∏ªË∞ÉÂ∫¶Âô® */
     ABTD_xstream_context ctx; /* ES context */
 
     ABTI_ythread
-        *p_root_ythread; /* Root thread that schedulers the main scheduler. */
+        *p_root_ythread; /* Root thread that schedulers the main scheduler. ‰∏ªÂçèÁ®ã */
     ABTI_pool *p_root_pool; /* Root pool that stores the main scheduler. */
 
     ABTU_align_member_var(ABT_CONFIG_STATIC_CACHELINE_SIZE)

@@ -236,7 +236,7 @@ ABTU_ret_err static int init_library(void)
     /* Initialize a spinlock */
     ABTD_spinlock_clear(&p_global->xstream_list_lock);
 
-    /* Create the primary ES */
+    /* Create the primary ES, 创建主ES */
     abt_errno = ABTI_xstream_create_primary(p_global, &p_local_xstream);
     if (abt_errno != ABT_SUCCESS)
         goto FAILED;
@@ -250,7 +250,7 @@ ABTU_ret_err static int init_library(void)
     abt_errno =
         ABTI_ythread_create_primary(p_global,
                                     ABTI_xstream_get_local(p_local_xstream),
-                                    p_local_xstream, &p_primary_ythread);
+                                    p_local_xstream, &p_primary_ythread);  // 创建 primary ult，加入到主调度器的池中
     if (abt_errno != ABT_SUCCESS)
         goto FAILED;
     init_stage = 3;
@@ -264,8 +264,8 @@ ABTU_ret_err static int init_library(void)
 
     /* Start the primary ES */
     ABTI_xstream_start_primary(p_global, &p_local_xstream, p_local_xstream,
-                               p_primary_ythread);
-
+                               p_primary_ythread);  // 切换上下文通过root ult跑到主调度器的协程中, 然后在主调度器的协程中跑primary ult
+													// 只是上下文切换到了primary ult中, 在外部的初始化流程中继续执行
     if (p_global->print_config == ABT_TRUE) {
         ABTI_info_print_config(p_global, stdout);
     }

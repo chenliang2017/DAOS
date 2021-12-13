@@ -73,7 +73,7 @@ static void *xstream_launch_root_ythread(void *p_xstream);
  * @param[out] newxstream  execution stream handle
  * @return Error code
  */
-int ABT_xstream_create(ABT_sched sched, ABT_xstream *newxstream)
+int ABT_xstream_create(ABT_sched sched, ABT_xstream *newxstream)// 创建一个xtream
 {
     ABTI_UB_ASSERT(ABTI_initialized());
     ABTI_UB_ASSERT(newxstream);
@@ -89,9 +89,9 @@ int ABT_xstream_create(ABT_sched sched, ABT_xstream *newxstream)
     ABTI_SETUP_GLOBAL(&p_global);
 
     ABTI_sched *p_sched = ABTI_sched_get_ptr(sched);
-    if (!p_sched) {
+    if (!p_sched) {  // 外部没有提供调度器时, 创建一个默认的调度器
         abt_errno =
-            ABTI_sched_create_basic(ABT_SCHED_DEFAULT, 0, NULL, NULL, &p_sched);
+            ABTI_sched_create_basic(ABT_SCHED_DEFAULT, 0, NULL, NULL, &p_sched);  // 创建一个默认的调度器: basic + fifo
         ABTI_CHECK_ERROR(abt_errno);
     } else {
 #ifndef ABT_CONFIG_ENABLE_VER_20_API
@@ -103,7 +103,7 @@ int ABT_xstream_create(ABT_sched sched, ABT_xstream *newxstream)
     }
 
     abt_errno = xstream_create(p_global, p_sched, ABTI_XSTREAM_TYPE_SECONDARY,
-                               -1, ABT_TRUE, &p_newxstream);
+                               -1, ABT_TRUE/*创建线程*/, &p_newxstream);
     if (abt_errno != ABT_SUCCESS) {
         if (!ABTI_sched_get_ptr(sched)) {
             ABTI_sched_free(p_global, ABTI_local_get_local_uninlined(), p_sched,
@@ -1606,12 +1606,13 @@ void ABTI_xstream_start_primary(ABTI_global *p_global,
         ABTD_affinity_cpuset_apply_default(&p_xstream->ctx, p_xstream->rank);
     }
 
-    /* Context switch to the root thread. */
+    /* Context switch to the root thread. 跑 root ult*/
     p_xstream->p_root_ythread->thread.p_last_xstream = p_xstream;
     ABTI_ythread_context_switch(*pp_local_xstream, p_ythread,
                                 p_xstream->p_root_ythread);
     /* Come back to the primary thread.  Now this thread is executed on top of
      * the main scheduler, which is running on the root thread. */
+    // primary ult是没有执行函数的, 这里只是说状态切到了primary ult中, 然后继续执行初始化后的流程 
     (*pp_local_xstream)->p_thread = &p_ythread->thread;
 }
 
@@ -1719,22 +1720,23 @@ void ABTI_xstream_print(ABTI_xstream *p_xstream, FILE *p_os, int indent,
     fflush(p_os);
 }
 
+// 多线程并发执行的接口, 采用的都是栈上的变量, 线程之间不影响
 static void *xstream_launch_root_ythread(void *p_xstream)
 {
-    ABTI_xstream *p_local_xstream = (ABTI_xstream *)p_xstream;
+    ABTI_xstream *p_local_xstream = (ABTI_xstream *)p_xstream;  // 当前的xstream
 
     /* Initialization of the local variables */
     ABTI_local_set_xstream(p_local_xstream);
 
     /* Set the root thread as the current thread */
-    ABTI_ythread *p_root_ythread = p_local_xstream->p_root_ythread;
+    ABTI_ythread *p_root_ythread = p_local_xstream->p_root_ythread;  // 主协程
     p_local_xstream->p_thread = &p_local_xstream->p_root_ythread->thread;
     p_root_ythread->thread.p_last_xstream = p_local_xstream;
 
     /* Run the root thread. */
-    p_root_ythread->thread.f_thread(p_root_ythread->thread.p_arg);
+    p_root_ythread->thread.f_thread(p_root_ythread->thread.p_arg);  // 执行协程任务
     ABTI_thread_terminate(ABTI_global_get_global(), p_local_xstream,
-                          &p_root_ythread->thread);
+                          &p_root_ythread->thread);  // 协程执行完成, 释放协程占空的资源
 
     /* Reset the current ES and its local info. */
     ABTI_local_set_xstream(NULL);
@@ -1754,12 +1756,13 @@ ABTU_ret_err static int xstream_create(ABTI_global *p_global,
     int abt_errno, init_stage = 0;
     ABTI_xstream *p_newxstream;
 
-    abt_errno = ABTU_malloc(sizeof(ABTI_xstream), (void **)&p_newxstream);  // 申请空间
+    abt_errno = ABTU_malloc(sizeof(ABTI_xstream), (void **)&p_newxstream);  // 为新的xtream申请空间
     ABTI_CHECK_ERROR(abt_errno);
 
     p_newxstream->p_prev = NULL;
     p_newxstream->p_next = NULL;
 
+	// 设置xstream的rank值, 并加入到全局的链表中p_global->p_xstream_head
     if (xstream_set_new_rank(p_global, p_newxstream, rank) == ABT_FALSE) {
         abt_errno = ABT_ERR_INV_XSTREAM_RANK;
         goto FAILED;
@@ -1777,12 +1780,12 @@ ABTU_ret_err static int xstream_create(ABTI_global *p_global,
     init_stage = 2;
 
     /* Set the main scheduler */
-    xstream_init_main_sched(p_newxstream, p_sched);  // xstream绑定调度器
-
+    xstream_init_main_sched(p_newxstream, p_sched);  // xstream绑定主调度器
+													 // xtream可以绑定多个调度器, 这是绑定的第一个调度器
     /* Create the root thread. */
     abt_errno =
         ABTI_ythread_create_root(p_global, ABTI_xstream_get_local(p_newxstream),
-                                 p_newxstream, &p_newxstream->p_root_ythread);
+                                 p_newxstream, &p_newxstream->p_root_ythread);  // 创建主协程, 执行函数为: thread_root_func
     if (abt_errno != ABT_SUCCESS)
         goto FAILED;
     init_stage = 3;
@@ -1799,8 +1802,8 @@ ABTU_ret_err static int xstream_create(ABTI_global *p_global,
         ABTI_ythread_create_main_sched(p_global,
                                        ABTI_xstream_get_local(p_newxstream),
                                        p_newxstream,
-                                       p_newxstream->p_main_sched);
-    if (abt_errno != ABT_SUCCESS)
+                                       p_newxstream->p_main_sched);  // 为主调度器创建一个协程, 执行函数: thread_main_sched_func
+    if (abt_errno != ABT_SUCCESS)									 // 加入到p_root_pool中等待主协程调度
         goto FAILED;
     init_stage = 5;
 
@@ -1812,7 +1815,7 @@ ABTU_ret_err static int xstream_create(ABTI_global *p_global,
         /* Start the main scheduler on a different ES */
         abt_errno = ABTD_xstream_context_create(xstream_launch_root_ythread,
                                                 (void *)p_newxstream,
-                                                &p_newxstream->ctx);
+                                                &p_newxstream->ctx);  // 创建线程, 线程转xstream_launch_root_ythread中执行
         if (abt_errno != ABT_SUCCESS)
             goto FAILED;
         init_stage = 6;
@@ -2101,7 +2104,7 @@ static ABT_bool xstream_set_new_rank(ABTI_global *p_global,
     }
     /* Set the rank */
     p_newxstream->rank = rank;
-    xstream_add_xstream_list(p_global, p_newxstream);
+    xstream_add_xstream_list(p_global, p_newxstream);  // 加入全局链表中
     xstream_update_max_xstreams(p_global, rank);
     p_global->num_xstreams++;
 

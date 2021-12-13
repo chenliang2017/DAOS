@@ -2524,7 +2524,7 @@ ABTU_ret_err int ABTI_ythread_create_primary(ABTI_global *p_global,
     ABTI_pool *p_pool;
 
     /* Get the first pool of ES */
-    p_pool = ABTI_pool_get_ptr(p_xstream->p_main_sched->pools[0]);
+    p_pool = ABTI_pool_get_ptr(p_xstream->p_main_sched->pools[0]);  // p0, 主调度器绑定的池
 
     /* Allocate a ULT object */
 
@@ -2536,7 +2536,7 @@ ABTU_ret_err int ABTI_ythread_create_primary(ABTI_global *p_global,
     int abt_errno =
         ythread_create(p_global, p_local, p_pool, NULL, NULL, &attr,
                        ABTI_THREAD_TYPE_YIELDABLE | ABTI_THREAD_TYPE_PRIMARY,
-                       NULL, THREAD_POOL_OP_PUSH, p_ythread);
+                       NULL, THREAD_POOL_OP_PUSH, p_ythread);  // 创建primary ult, 加入到主调度器的调度池中
     ABTI_CHECK_ERROR(abt_errno);
     return ABT_SUCCESS;
 }
@@ -2949,7 +2949,7 @@ ythread_create(ABTI_global *p_global, ABTI_local *p_local, ABTI_pool *p_pool,
         if (pool_op == THREAD_POOL_OP_PUSH) {
             /* Add this thread to the pool */
             ABTI_pool_push(p_pool, p_newthread->thread.unit,
-                           ABT_POOL_CONTEXT_OP_THREAD_CREATE);
+                           ABT_POOL_CONTEXT_OP_THREAD_CREATE);  // 任务加到队列中
         }
     } else {
         /* pool_op == THREAD_POOL_OP_NONE */
@@ -3149,7 +3149,7 @@ static inline void thread_join(ABTI_local **pp_local, ABTI_thread *p_thread)
     /* The primary ULT cannot be joined. */
     ABTI_ASSERT(!(p_thread->type & ABTI_THREAD_TYPE_PRIMARY));
 
-    ABTI_xstream *p_local_xstream = ABTI_local_get_xstream_or_null(*pp_local);
+    ABTI_xstream *p_local_xstream = ABTI_local_get_xstream_or_null(*pp_local);  // 当前的xstream
     if (ABTI_IS_EXT_THREAD_ENABLED && !p_local_xstream) {
 #ifdef ABT_CONFIG_ACTIVE_WAIT_POLICY
         thread_join_busywait(p_thread);
@@ -3161,7 +3161,7 @@ static inline void thread_join(ABTI_local **pp_local, ABTI_thread *p_thread)
 
     ABTI_thread *p_self_thread = p_local_xstream->p_thread;
 
-    ABTI_ythread *p_self = ABTI_thread_get_ythread_or_null(p_self_thread);
+    ABTI_ythread *p_self = ABTI_thread_get_ythread_or_null(p_self_thread);  // 当前的协程
     if (!p_self) {
 #ifdef ABT_CONFIG_ACTIVE_WAIT_POLICY
         thread_join_busywait(p_thread);
@@ -3194,32 +3194,35 @@ static inline void thread_join(ABTI_local **pp_local, ABTI_thread *p_thread)
         /* Suspend the current ULT */
         ABTI_ythread_suspend_join(&p_local_xstream, p_self, p_ythread,
                                   ABT_SYNC_EVENT_TYPE_THREAD_JOIN,
-                                  (void *)p_ythread);
+                                  (void *)p_ythread);  // 挂起当前的协程, 执行目标协程, 目标协程执行完会回复当前协程的执行
         /* This thread is resumed by a target thread.  Since this ULT is resumed
          * before the target thread is fully terminated, let's wait for the
-         * completion. */
+         * completion. 
+         * 跑到这里, 当前协程已经恢复执行了
+         * 在该接口中等目标协程结束 */
         thread_join_yield_thread(&p_local_xstream, p_self, &p_ythread->thread);
         *pp_local = ABTI_xstream_get_local(p_local_xstream);
     }
 }
 
+// xstream的主协程, xtream的线程总是先跑到这里, 然后才调度协程任务
 static void thread_root_func(void *arg)
 {
     /* root thread is working on a special context, so it should not rely on
      * functionality that needs yield. */
     ABTI_global *p_global = ABTI_global_get_global();
     ABTI_local *p_local = ABTI_local_get_local();
-    ABTI_xstream *p_local_xstream = ABTI_local_get_xstream(p_local);
+    ABTI_xstream *p_local_xstream = ABTI_local_get_xstream(p_local);  // 当前正在执行的xstream
     ABTI_ASSERT(ABTD_atomic_relaxed_load_int(&p_local_xstream->state) ==
                 ABT_XSTREAM_STATE_RUNNING);
 
-    ABTI_ythread *p_root_ythread = p_local_xstream->p_root_ythread;
+    ABTI_ythread *p_root_ythread = p_local_xstream->p_root_ythread;  // 主协程任务
     p_local_xstream->p_thread = &p_root_ythread->thread;
     ABTI_pool *p_root_pool = p_local_xstream->p_root_pool;
 
     do {
         ABT_thread thread =
-            ABTI_pool_pop(p_root_pool, ABT_POOL_CONTEXT_OWNER_PRIMARY);
+            ABTI_pool_pop(p_root_pool, ABT_POOL_CONTEXT_OWNER_PRIMARY);  // 取一个待执行的调度器, 目前这个p_root_pool上只有一个调度器
         if (thread != ABT_THREAD_NULL) {
             ABTI_xstream *p_xstream = p_local_xstream;
             ABTI_thread *p_thread = ABTI_thread_get_ptr(thread);
@@ -3229,7 +3232,7 @@ static void thread_root_func(void *arg)
         }
     } while (ABTD_atomic_acquire_load_int(
                  &p_local_xstream->p_main_sched->p_ythread->thread.state) !=
-             ABT_THREAD_STATE_TERMINATED);
+             ABT_THREAD_STATE_TERMINATED);  // 主调度器结束执行
     /* The main scheduler thread finishes. */
 
     /* Set the ES's state as TERMINATED */
@@ -3247,19 +3250,20 @@ static void thread_main_sched_func(void *arg)
     ABTI_local *p_local = ABTI_local_get_local();
     ABTI_xstream *p_local_xstream = ABTI_local_get_xstream(p_local);
 
+	// 主调度器循环执行
     while (1) {
         /* Execute the run function of scheduler */
         ABTI_sched *p_sched = p_local_xstream->p_main_sched;
         ABTI_ASSERT(p_local_xstream->p_thread == &p_sched->p_ythread->thread);
 
-        p_sched->run(ABTI_sched_get_handle(p_sched));
+        p_sched->run(ABTI_sched_get_handle(p_sched));  // 调用主调度器的run函数
         /* The main scheduler's thread must be executed on the same execution
          * stream. */
         ABTI_ASSERT(p_local == ABTI_local_get_local_uninlined());
 
         /* We free the current main scheduler and replace it if requested. */
         if (ABTD_atomic_relaxed_load_uint32(&p_sched->request) &
-            ABTI_SCHED_REQ_REPLACE) {
+            ABTI_SCHED_REQ_REPLACE) {  // 替换调度器
             ABTI_ythread *p_waiter = p_sched->p_replace_waiter;
             ABTI_sched *p_new_sched = p_sched->p_replace_sched;
             /* Set this scheduler as a main scheduler */
@@ -3285,11 +3289,12 @@ static void thread_main_sched_func(void *arg)
 
         /* If there is an exit or a cancel request, the ES terminates
          * regardless of remaining work units. */
-        if (request & ABTI_THREAD_REQ_CANCEL)
+        if (request & ABTI_THREAD_REQ_CANCEL)  // 取消执行
             break;
 
         /* When join is requested, the ES terminates after finishing
-         * execution of all work units. */
+         * execution of all work units.
+         * 结束 */
         if ((ABTD_atomic_relaxed_load_uint32(&p_sched->request) &
              ABTI_SCHED_REQ_FINISH) &&
             !ABTI_sched_has_unit(p_sched)) {
