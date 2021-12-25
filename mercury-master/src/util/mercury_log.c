@@ -103,7 +103,7 @@ static HG_QUEUE_HEAD(hg_log_outlet)
     hg_log_outlets_g = HG_QUEUE_HEAD_INITIALIZER(hg_log_outlets_g);
 
 /* Default 'printf' log function */
-static int (*hg_log_func_g)(FILE *stream, const char *format, ...) = fprintf;
+static int (*hg_log_func_g)(FILE *stream, const char *format, ...) = printf;
 
 /* Default log level */
 static enum hg_log_level hg_log_level_g = HG_LOG_LEVEL_ERROR;

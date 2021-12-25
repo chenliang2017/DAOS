@@ -16,7 +16,7 @@
 #include <abt.h>
 
 #define DEFAULT_NUM_XSTREAMS 2
-#define DEFAULT_NUM_THREADS 8
+#define DEFAULT_NUM_THREADS 4
 
 typedef struct {
     int tid;
@@ -25,7 +25,18 @@ typedef struct {
 void hello_world(void *arg)
 {
     int tid = ((thread_arg_t *)arg)->tid;
-    printf("Hello world! (thread = %d)\n", tid);
+	printf("Hello world\n");
+	if (tid == 0) {
+		int count = 0;
+		for(;;) {
+			if(count++ > 1) break;
+    		printf("Hello world! (thread = %d)\n", tid);
+			ABT_thread_yield();
+		}
+	}
+	else {
+		printf("Hello world! (thread = %d)\n", tid);
+	}
 }
 
 int main(int argc, char **argv)
@@ -33,7 +44,7 @@ int main(int argc, char **argv)
     int i;
     /* Read arguments. */
     int num_xstreams = DEFAULT_NUM_XSTREAMS;  // 2
-    int num_threads = DEFAULT_NUM_THREADS;    // 8
+    int num_threads = DEFAULT_NUM_THREADS;    // 4
     while (1) {
         int opt = getopt(argc, argv, "he:n:");
         if (opt == -1)
@@ -79,7 +90,11 @@ int main(int argc, char **argv)
 
     /* Get default pools. */
     for (i = 0; i < num_xstreams; i++) {
+<<<<<<< Updated upstream
         ABT_xstream_get_main_pools(xstreams[1], 1, &pools[1]);  // 获取主调度器的池
+=======
+        ABT_xstream_get_main_pools(xstreams[1], 1, &pools[1]);  // 获取调度器的池
+>>>>>>> Stashed changes
     }
 
     /* Create ULTs. */

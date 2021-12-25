@@ -916,7 +916,7 @@ hg_core_init(const char *na_info_string, hg_bool_t na_listen,
     }
 
     /* Initialize NA if not provided externally */
-    if (!hg_core_class->na_ext_init) {
+    if (!hg_core_class->na_ext_init) {  // 初始化na_class
         hg_core_class->core_class.na_class = NA_Initialize_opt(
             na_info_string, na_listen, &hg_init_info->na_init_info);
         HG_CHECK_ERROR(hg_core_class->core_class.na_class == NULL, error, ret,

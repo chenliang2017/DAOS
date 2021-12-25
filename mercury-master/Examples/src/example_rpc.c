@@ -69,8 +69,8 @@ my_rpc_register(void)
 
     hg_class = hg_engine_get_class();
 
-    tmp = MERCURY_REGISTER(
-        hg_class, "my_rpc", my_rpc_in_t, my_rpc_out_t, my_rpc_handler);
+    tmp = HG_Register_name(
+        hg_class, "my_rpc",  hg_proc_my_rpc_in_t,  hg_proc_my_rpc_out_t, my_rpc_handler);
 
     return (tmp);
 }

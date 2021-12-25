@@ -997,7 +997,7 @@ HG_Init_opt(const char *na_info_string, hg_bool_t na_listen,
         (hg_init_info) ? !hg_init_info->no_bulk_eager : HG_TRUE;
 
     hg_class->hg_class.core_class =
-        HG_Core_init_opt(na_info_string, na_listen, hg_init_info);
+        HG_Core_init_opt(na_info_string, na_listen, hg_init_info);  // 完成监听
     HG_CHECK_ERROR_NORET(hg_class->hg_class.core_class == NULL, error,
         "Could not create HG core class");
 

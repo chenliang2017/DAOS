@@ -33,10 +33,10 @@ hg_engine_init(hg_bool_t listen, const char *local_addr)
 {
     int ret;
 
-    HG_Set_log_level("warning");
+    HG_Set_log_level("debug");
 
     /* boilerplate HG initialization steps */
-    hg_class = HG_Init(local_addr, listen);
+    hg_class = HG_Init(local_addr, listen);		// 启动监听
     assert(hg_class);
 
     hg_context = HG_Context_create(hg_class);
@@ -110,6 +110,7 @@ hg_engine_print_self_addr(void)
     (void) ret;
 
     printf("svr address string: \"%s\"\n", buf);
+	//HG_LOG_DEBUG("svr address string: \"%s\"\n", buf);
 
     ret = HG_Addr_free(hg_class, addr);
     assert(ret == HG_SUCCESS);

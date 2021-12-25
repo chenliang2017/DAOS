@@ -68,12 +68,12 @@ main(int argc, char *argv[])
     my_rpc_id = my_rpc_register();
 
     /* issue 4 RPCs (these will proceed concurrently using callbacks) */
-    for (i = 0; i < 4; i++)
+    for (i = 0; i < 1; i++)
         run_my_rpc(svr_addr_string, i);
 
     /* wait for callbacks to finish */
     pthread_mutex_lock(&done_mutex);
-    while (done < 4)
+    while (done < 1)
         pthread_cond_wait(&done_cond, &done_mutex);
     pthread_mutex_unlock(&done_mutex);
 
@@ -104,6 +104,10 @@ run_my_rpc(const char *svr_addr_string, int value)
     sprintf((char *) my_rpc_state_p->buffer, "Hello world!\n");
     my_rpc_state_p->value = value;
 
+	//printf("befor sleep\n");
+    //sleep(30);
+	//printf("after sleep\n");
+
     /* create create handle to represent this rpc operation */
     hg_engine_create_handle(svr_addr, my_rpc_id, &my_rpc_state_p->handle);
 
@@ -124,6 +128,7 @@ run_my_rpc(const char *svr_addr_string, int value)
     (void) ret;
 
     hg_engine_addr_free(svr_addr);
+	//printf("exit run_my_rpc\n");
 
     return;
 }

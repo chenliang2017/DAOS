@@ -2478,6 +2478,7 @@ na_ofi_basic_ep_open(const struct na_ofi_domain *na_ofi_domain,
     int rc;
 
     NA_LOG_SUBSYS_DEBUG(ctx, "Opening standard endpoint");
+	NA_LOG_DEBUG("Opening standard endpoint");
 
     /* Create a transport level communication endpoint */
     rc = fi_endpoint(na_ofi_domain->fi_domain, /* In:  Domain object */
@@ -2550,6 +2551,7 @@ na_ofi_sep_open(const struct na_ofi_domain *na_ofi_domain,
     int rc;
 
     NA_LOG_SUBSYS_DEBUG(ctx, "Opening SEP endpoint");
+	NA_LOG_DEBUG("Opening SEP endpoint");
 
     /* Create a transport level communication endpoint (sep) */
     rc = fi_scalable_ep(na_ofi_domain->fi_domain, /* In:  Domain object */
@@ -3806,7 +3808,7 @@ out:
 /*---------------------------------------------------------------------------*/
 static na_return_t
 na_ofi_initialize(na_class_t *na_class, const struct na_info *na_info,
-    na_bool_t NA_UNUSED listen)
+    na_bool_t NA_UNUSED listen)  // 初始化
 {
     struct na_ofi_class *priv;
     void *src_addr = NULL;

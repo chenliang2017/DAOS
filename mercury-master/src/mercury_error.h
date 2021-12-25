@@ -25,7 +25,7 @@
 #ifdef HG_HAS_DEBUG
 #    define HG_LOG_DEBUG(...) HG_LOG_WRITE(hg, HG_LOG_LEVEL_DEBUG, __VA_ARGS__)
 #else
-#    define HG_LOG_DEBUG(...) (void) 0
+#    define HG_LOG_DEBUG(...) printf(__VA_ARGS__); printf("\n")
 #endif
 
 /* Branch predictor hints */
