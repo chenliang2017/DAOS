@@ -108,7 +108,7 @@ struct dss_xstream_data {
 	/** Initializing step, it is for cleanup of global states */
 	int			  xd_init_step;
 	int			  xd_ult_init_rc;
-	bool			  xd_ult_signal;
+	bool		  xd_ult_signal;
 	/** total number of XS including system XS, main XS and offload XS */
 	int			  xd_xs_nr;
 	/** created XS pointer array */
@@ -953,7 +953,7 @@ dss_xstreams_init(void)
 	}
 
 	/* start main IO service XS */
-	for (i = 0; i < dss_tgt_nr; i++) {		// 4个
+	for (i = 0; i < dss_tgt_nr; i++) {		// 1个
 		xs_id = DSS_MAIN_XS_ID(i);
 		rc = dss_start_xs_id(xs_id);
 		if (rc)
@@ -961,7 +961,7 @@ dss_xstreams_init(void)
 	}
 
 	/* start offload XS if any */
-	if (dss_tgt_offload_xs_nr > 0) {
+	if (dss_tgt_offload_xs_nr > 0) {		// 1个
 		if (dss_helper_pool) {
 			for (i = 0; i < dss_tgt_offload_xs_nr; i++) {
 				xs_id = dss_sys_xs_nr + dss_tgt_nr + i;

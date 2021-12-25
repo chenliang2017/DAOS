@@ -39,8 +39,8 @@ enum PL_OP_TYPE {
  * Contains information related to object layout size.
  */
 struct jm_obj_placement {
-	unsigned int    jmop_grp_size;
-	unsigned int    jmop_grp_nr;
+	unsigned int    jmop_grp_size;	// 副本数：同一份数据拆分成多少份
+	unsigned int    jmop_grp_nr;	// Group的数量, 类似于PG数
 };
 
 /**
@@ -52,11 +52,11 @@ struct jm_obj_placement {
 struct pl_jump_map {
 	/** placement map interface */
 	struct pl_map		jmp_map;
-	/* Total size of domain type specified during map creation */
+	/* Total size of domain type specified during map creation, jmp_redundant_dom指定domain的数量 */
 	unsigned int		jmp_domain_nr;
-	/* # UPIN targets */
+	/* # UPIN targets, UPIN状态target的数量 */
 	unsigned int		jmp_target_nr;
-	/* The dom that will contain no colocated shards */
+	/* The dom that will contain no colocated shards, 不包含共同分片的domain, 故障域？ */
 	pool_comp_type_t	jmp_redundant_dom;
 };
 
@@ -117,9 +117,9 @@ layout_find_diff(struct pl_jump_map *jmap, struct pl_obj_layout *original,
 	}
 }
 /**
- * This is useful for jump_map placement to pseudorandomly permute input keys
- * that are similar to each other. This dramatically improves the even-ness of
- * the distribution of output placements.
+ * This is useful for jump_map placement to pseudorandomly(伪随机) permute(变更) input keys
+ * that are similar to each other. This dramatically(显著的) improves the even-ness(均匀性) of
+ * the distribution(分布) of output placements.
  */
 static inline uint64_t
 crc(uint64_t data, uint32_t init_val)
@@ -166,17 +166,17 @@ jm_obj_placement_get(struct pl_jump_map *jmap, struct daos_obj_md *md,
 				  PO_COMP_ID_ALL, &root);
 	D_ASSERT(rc == 1);
 
-	rc = op_get_grp_size(jmap->jmp_domain_nr, &jmop->jmop_grp_size, oid);
+	rc = op_get_grp_size(jmap->jmp_domain_nr, &jmop->jmop_grp_size, oid);  // 根据oid中的oclass, 获取副本数
 	if (rc)
 		return rc;
 
 	if (shard_md == NULL) {
-		unsigned int grp_max = root->do_target_nr / jmop->jmop_grp_size;
+		unsigned int grp_max = root->do_target_nr / jmop->jmop_grp_size;  // 当前的target数量决定的group数量的上限
 
 		if (grp_max == 0)
 			grp_max = 1;
 
-		jmop->jmop_grp_nr = daos_oclass_grp_nr(oc_attr, md);
+		jmop->jmop_grp_nr = daos_oclass_grp_nr(oc_attr, md);  // obj指定了PG数
 		if (jmop->jmop_grp_nr == DAOS_OBJ_GRP_MAX)
 			jmop->jmop_grp_nr = grp_max;
 		else if (jmop->jmop_grp_nr > grp_max)
@@ -237,10 +237,12 @@ get_num_domains(struct pool_domain *curr_dom, uint32_t allow_status)
 	if (curr_dom->do_children == NULL)
 		num_dom = curr_dom->do_target_nr;
 	else
-		num_dom = curr_dom->do_child_nr;
+		num_dom = curr_dom->do_child_nr;  // 孩子节点的数量
 
-	if (allow_status & PO_COMP_ST_NEW)
+	if (allow_status & PO_COMP_ST_NEW)  // 允许NEW时直接返回下级域的个数
 		return num_dom;
+
+	// 不允许NEW状态的下级域，需要减掉NEW状态的下级域
 
 	if (curr_dom->do_children != NULL) {
 		next_dom = &curr_dom->do_children[num_dom - 1];
@@ -267,7 +269,7 @@ get_num_domains(struct pool_domain *curr_dom, uint32_t allow_status)
 
 static void
 reset_dom_cur_grp(uint8_t *dom_cur_grp_used, uint8_t *dom_occupied, uint32_t dom_size)
-{
+{  // 遍历root下的所有domain, 如果domain下的target没有被全部使用, 就将该domain从dom_cur_grp_used清除
 	int i;
 
 	for (i = 0; i < dom_size; i++) {
@@ -293,65 +295,70 @@ reset_dom_cur_grp(uint8_t *dom_cur_grp_used, uint8_t *dom_occupied, uint32_t dom
  *                              selected target for this shard.
  * \param[in]   obj_key         a unique key generated using the object ID.
  *                              This is used in jump consistent hash.
- * \param[in]   dom_used        This is a contiguous array that contains
+ * \param[in]   dom_used        This is a contiguous(连续的) array that contains
  *                              information on whether or not an internal node
  *                              (non-target) in a domain has been used.
+ *								当一个domain下的target被选择后，这个domain在dom_used中就被置1
+ *								针对所有的domain: root->node->rank
  * \param[in]   dom_occupied    This is a contiguous array that contains
  *                              information on whether or not all targets of the
- *                              domain has been occupied.
+ *                              domain has been occupied(占用).
+ *								这个其实针对的是rank级别domain的描述，当这个rank下所有的targte都被选择后，就置1
  * \param[in]	dom_cur_grp_used The array contains information if the domain
  *                              is used by the current group, so it can try not
  *                              put the different shards in the same domain.
- * \param[in]   used_targets    A list of the targets that have been used. We
+ *								这个也是针对rank级别domain的描述，当group在这个rank下选择出一个target后，就将该rank对应的槽位置1
+ * \param[in]   tgts_used    	A list of the targets that have been used. We
  *                              iterate through this when selecting the next
  *                              target in a placement to determine if that
  *                              location is valid.
+ *								这个是针对target的描述
  * \param[in]   shard_num       the current shard number. This is used when
  *                              selecting a target to determine if repeated
  *                              targets are allowed in the case that there
  *                              are more shards than targets
- *
+ * 选target
  */
 #define MAX_STACK	5
 static void
-get_target(struct pool_domain *curr_dom, struct pool_target **target,
-	   uint64_t obj_key, uint8_t *dom_used, uint8_t *dom_occupied,
-	   uint8_t *dom_cur_grp_used, uint8_t *tgts_used, int shard_num,
+get_target(struct pool_domain *curr_dom, struct pool_target **target/*出参, 选出来的target*/,
+	   uint64_t obj_key/*通过oid生成的key*/, uint8_t *dom_used, uint8_t *dom_occupied,
+	   uint8_t *dom_cur_grp_used, uint8_t *tgts_used, int shard_num/*待选择target的分片编号*/,
 	   uint32_t allow_status)
 {
 	int                     range_set;
 	uint8_t                 found_target = 0;
 	uint32_t                selected_dom;
 	struct pool_domain      *root_pos;
-	struct pool_domain	*dom_stack[MAX_STACK] = { 0 };
-	uint32_t		dom_size;
-	int			top = -1;
+	struct pool_domain		*dom_stack[MAX_STACK] = { 0 };
+	uint32_t				dom_size;
+	int						top = -1;
 
-	obj_key = crc(obj_key, shard_num);
-	root_pos = curr_dom;
-	dom_size = (struct pool_domain *)(root_pos->do_targets) - (root_pos) + 1;
+	obj_key = crc(obj_key, shard_num); // 再次异或, 产生key
+	root_pos = curr_dom;	// 根节点的位置
+	dom_size = (struct pool_domain *)(root_pos->do_targets) - (root_pos) + 1;	// 中间组件的数量
 retry:
 	do {
-		uint32_t        num_doms;
+		uint32_t        num_doms;	// 当前域下级域的个数
 
 		/* Retrieve number of nodes in this domain */
-		num_doms = get_num_domains(curr_dom, allow_status);
+		num_doms = get_num_domains(curr_dom, allow_status);  // curr_dom下级域的个数(状态非NEW的下级域的个数)
 
 		/* If choosing target (lowest fault domain level) */
-		if (curr_dom->do_children == NULL) {
+		if (curr_dom->do_children == NULL) {  // 类型为rank的域
 			uint32_t        fail_num = 0;
 			uint32_t        dom_id;
 			uint32_t        start_tgt;
 			uint32_t        end_tgt;
 
-			start_tgt = curr_dom->do_targets[0].ta_comp.co_id;
-			end_tgt = start_tgt + (num_doms - 1);
+			start_tgt = curr_dom->do_targets[0].ta_comp.co_id;  // rank的第一个target
+			end_tgt = start_tgt + (num_doms - 1);				// rank的最后一个target
 
 			range_set = isset_range(tgts_used, start_tgt, end_tgt);
-			if (range_set) {
+			if (range_set) {  // start_tgt ~ end_tgt之间的target全部被占用了
 				/* Used up all targets in this domain */
 				D_ASSERT(top != -1);
-				curr_dom = dom_stack[top--]; /* try parent */
+				curr_dom = dom_stack[top--]; /* try parent, 退到父节点重新选一次domain */
 				continue;
 			}
 
@@ -362,7 +369,7 @@ retry:
 			 */
 			obj_key = crc(obj_key, fail_num++);
 			/* Get target for shard */
-			selected_dom = d_hash_jump(obj_key, num_doms);
+			selected_dom = d_hash_jump(obj_key, num_doms);  // key针对target数量进行哈希
 			do {
 				selected_dom = selected_dom % num_doms;
 				/* Retrieve actual target using index */
@@ -370,12 +377,12 @@ retry:
 				/* Get target id to check if target used */
 				dom_id = (*target)->ta_comp.co_id;
 				selected_dom++;
-			} while (isset(tgts_used, dom_id));
+			} while (isset(tgts_used, dom_id));  // 循环遍历rank的所有target, 找到第一个可用的target
 
-			setbit(tgts_used, dom_id);
-			setbit(dom_cur_grp_used, curr_dom - root_pos);
+			setbit(tgts_used, dom_id);	// 设置targte已被使用
+			setbit(dom_cur_grp_used, curr_dom - root_pos);	// 设置rank已经在当前的group中
 			range_set = isset_range(tgts_used, start_tgt, end_tgt);
-			if (range_set) {
+			if (range_set) {	// 如果rank下的所有target都已经被使用掉, 标记当前rank已经全部被使用
 				/* Used up all targets in this domain */
 				setbit(dom_occupied, curr_dom - root_pos);
 				D_DEBUG(DB_PL, "dom %p %d used up\n",
@@ -392,20 +399,20 @@ retry:
 
 			key = obj_key;
 
-			start_dom = (curr_dom->do_children) - root_pos;
-			end_dom = start_dom + (num_doms - 1);
+			start_dom = (curr_dom->do_children) - root_pos;		// 第一个孩子节点的索引
+			end_dom = start_dom + (num_doms - 1);				// 最后一个孩子节点的索引
 
 			/* Check if all targets under the domain range has been
 			 * used up (occupied), go back to its parent if it does.
 			 */
 			range_set = isset_range(dom_occupied, start_dom, end_dom);
-			if (range_set) {
+			if (range_set) {	// 最开始是rank级别的domain，该rank下属的所有target都已被选择
 				if (top == -1) {
 					/* shard nr > target nr, no extra target for the shard */
 					*target = NULL;
 					return;
 				}
-				setbit(dom_occupied, curr_dom - root_pos);
+				setbit(dom_occupied, curr_dom - root_pos); // 上移
 				D_DEBUG(DB_PL, "used up dom %d\n",
 					(int)(curr_dom - root_pos));
 				setbit(dom_cur_grp_used, curr_dom - root_pos);
@@ -415,43 +422,46 @@ retry:
 
 			/* Check if all domain range has been used for the current group */
 			range_set = isset_range(dom_cur_grp_used, start_dom, end_dom);
-			if (range_set) {
+			if (range_set) {	// 表示当前domain下属的所有rank已经被当前的group选择过一次
 				if (top == -1) {
 					/* all domains have been used by the current group,
 					 * then we cleanup the dom_cur_grp_used bits, i.e.
 					 * the shards within the same group might be put
 					 * to the same domain.
+					 * 到root根节点, 重新对dom_cur_grp_used进行赋值, 允许复用未全部用完target的domain
 					 */
 					reset_dom_cur_grp(dom_cur_grp_used, dom_occupied, dom_size);
 					goto retry;
 				}
-				setbit(dom_cur_grp_used, curr_dom - root_pos);
+				setbit(dom_cur_grp_used, curr_dom - root_pos);  // 当前domain标记为已被当前group使用
 				curr_dom = dom_stack[top--];
 				continue;
 			}
 
-			/* Check if all targets under the domain have been used, and try to reset
+			/* Check if targets under the domain have been used, and try to reset
 			 * the used targets.
 			 */
 			range_set = isset_range(dom_used, start_dom, end_dom);
-			if (range_set) {
-				int idx;
-				bool reset_used = false;
+			if (range_set) {	// start_dom到end_dom对应的位已经全部为置1，domain已经被使用过一次
+				int idx;		// domain下的target已经被选择过一次了, 这个domain可能是很高级别的domain
+				bool reset_used = false;	// 只表示这个domain下有被选择的target，并不表示这个domain下的所有target都已被选择
 
 				for (idx = start_dom; idx <= end_dom; ++idx) {
-					if (isset(dom_occupied, idx)) {
+					if (isset(dom_occupied, idx)) {		// rank级别的domain
 						/* If all targets of the domain has been used up,
 						 * then these targets can not be reused. And also
 						 * set the group bits here to make the check easier.
+						 * rank下的所有target都别使用掉了, 无论是否是本轮group使用的，都在本轮group中标记已经使用掉
 						 */
 						setbit(dom_cur_grp_used, idx);
-					} else if (isclr(dom_cur_grp_used, idx)) {
+					} else if (isclr(dom_cur_grp_used, idx)) {	// 没有被当前的group选择过(rank级别的domain)
 						/* If the domain has been used for the current
 						 * group, then let's do not reset the used bits,
 						 * i.e. do not choose the domain unless all domain
 						 * are used. see above.
+						 * domain没有被当前的group选择过, 就可以被当前的group使用
 						 */
-						clrbit(dom_used, idx);
+						clrbit(dom_used, idx);  // 清掉标志位, 复用
 						reset_used = true;
 					}
 				}
@@ -468,11 +478,13 @@ retry:
 					 * means all domain has been used for the group. So let's
 					 * reset dom_cur_grp_used and start put multiple domain in
 					 * the same group.
+					 * 根节点直属的domain全部被标记为已使用, 就尝试将所有的domain在当前的dom_cur_grp_used
+					 * 中置为未使用; 只有下属targte未全部被使用的domain才可以在dom_cur_grp_used设置为未使用
 					 */
 					if (!reset_used)
 						reset_dom_cur_grp(dom_cur_grp_used, dom_occupied,
-								  dom_size);
-					curr_dom = root_pos;
+								  dom_size);  // 除了下属target全部被占用掉的rank，把其他的domain在dom_cur_grp_used
+					curr_dom = root_pos;	// 中全部置为未使用
 				}
 				continue;
 			}
@@ -481,14 +493,14 @@ retry:
 			 * not been used is found
 			 */
 			do {
-				selected_dom = d_hash_jump(key, num_doms);
+				selected_dom = d_hash_jump(key, num_doms);  // jump map选择一个小于num_doms的值 --> 选出一个下级域
 				key = crc(key, fail_num++);
 			} while (isset(dom_used, start_dom + selected_dom));
 
 			/* Mark this domain as used */
-			setbit(dom_used, start_dom + selected_dom);
+			setbit(dom_used, start_dom + selected_dom);			// 标记为已用
 			D_ASSERT(top < MAX_STACK - 1);
-			dom_stack[++top] = curr_dom;
+			dom_stack[++top] = curr_dom;						// 
 			curr_dom = &(curr_dom->do_children[selected_dom]);
 			obj_key = crc(obj_key, curr_dom->do_comp.co_id);
 		}
@@ -755,8 +767,8 @@ get_object_layout(struct pl_jump_map *jmap, struct pl_obj_layout *layout,
 	else
 		remap_list = &local_list;
 
-	dom_size = (struct pool_domain *)(root->do_targets) - (root) + 1;
-	dom_array_size = dom_size/NBBY + 1;
+	dom_size = (struct pool_domain *)(root->do_targets) - (root) + 1;  // domain的数量
+	dom_array_size = dom_size/NBBY + 1;				// 占多少位, 后面用位图存储domain的使用情况
 	if (dom_array_size > LOCAL_DOM_ARRAY_SIZE) {
 		D_ALLOC_ARRAY(dom_used, dom_array_size);
 		D_ALLOC_ARRAY(dom_occupied, dom_array_size);
@@ -774,11 +786,12 @@ get_object_layout(struct pl_jump_map *jmap, struct pl_obj_layout *layout,
 		D_GOTO(out, rc = -DER_NOMEM);
 
 	oid = md->omd_id;
-	key = oid.hi ^ oid.lo;
-	if (daos_obj_is_srank(oid))
+	key = oid.hi ^ oid.lo;		 // 异或取key
+	if (daos_obj_is_srank(oid))  // 特殊场景
 		spec_oid = true;
 
-	for (i = 0, k = 0; i < jmop->jmop_grp_nr; i++) {
+	// 选择足量的grp
+	for (i = 0, k = 0; i < jmop->jmop_grp_nr/*Group数*/; i++) {
 		struct dom_grp_used  *remap_grp_used = NULL;
 
 		if (realloc_grp_used) {
@@ -790,9 +803,10 @@ get_object_layout(struct pl_jump_map *jmap, struct pl_obj_layout *layout,
 			memset(dom_cur_grp_used, 0, dom_array_size);
 		}
 
-		for (j = 0; j < jmop->jmop_grp_size; j++, k++) {
+		// 给每个grp选出足量的副本
+		for (j = 0; j < jmop->jmop_grp_size/*副本数*/; j++, k++/*分片序号*/) {
 			target = NULL;
-			if (spec_oid && i == 0 && j == 0) {
+			if (spec_oid && i == 0 && j == 0) {  // 特殊场景, 进不来
 				/**
 				 * If the object class is a special class then
 				 * the first shard must be picked specially.
@@ -811,10 +825,10 @@ get_object_layout(struct pl_jump_map *jmap, struct pl_obj_layout *layout,
 			} else {
 				get_target(root, &target, key, dom_used,
 					   dom_occupied, dom_cur_grp_used,
-					   tgts_used, k, allow_status);
+					   tgts_used, k, allow_status);  // 选一个target
 			}
 
-			if (target == NULL) {
+			if (target == NULL) {	// 选不出来target
 				D_DEBUG(DB_PL, "no targets for %d/%d/%d\n",
 					i, j, k);
 				layout->ol_shards[k].po_target = -1;
@@ -823,13 +837,13 @@ get_object_layout(struct pl_jump_map *jmap, struct pl_obj_layout *layout,
 				continue;
 			}
 			layout->ol_shards[k].po_target =
-				target->ta_comp.co_id;
+				target->ta_comp.co_id;				// 选出来的target的全局编号
 			layout->ol_shards[k].po_fseq =
-				target->ta_comp.co_fseq;
-			layout->ol_shards[k].po_shard = k;
+				target->ta_comp.co_fseq;			// target被标记down时的map版本号, 选主时使用, 较小者成为主
+			layout->ol_shards[k].po_shard = k;		// 在obj内部的编号
 
 			/** If target is failed queue it for remap*/
-			if (!pool_target_avail(target, allow_status)) {
+			if (!pool_target_avail(target, allow_status)) {  // 选出来的target状态不对
 				fail_tgt_cnt++;
 				D_DEBUG(DB_PL, "Target unavailable " DF_TARGET
 					". Adding to remap_list: fail cnt %d\n",
@@ -904,7 +918,7 @@ obj_layout_alloc_and_get(struct pl_jump_map *jmap,
 	D_ASSERT(jmop->jmop_grp_size > 0);
 	D_ASSERT(jmop->jmop_grp_nr > 0);
 	rc = pl_obj_layout_alloc(jmop->jmop_grp_size, jmop->jmop_grp_nr,
-				 layout_p);
+				 layout_p);  // 申请空间并初始化
 	if (rc) {
 		D_ERROR("pl_obj_layout_alloc failed, rc "DF_RC"\n",
 			DP_RC(rc));
@@ -912,7 +926,7 @@ obj_layout_alloc_and_get(struct pl_jump_map *jmap,
 	}
 
 	rc = get_object_layout(jmap, *layout_p, jmop, remap_list, allow_status,
-			       md, is_extending);
+			       md, is_extending);  // 计算分布
 	if (rc) {
 		D_ERROR("get object layout failed, rc "DF_RC"\n",
 			DP_RC(rc));
@@ -967,7 +981,7 @@ jump_map_create(struct pool_map *poolmap, struct pl_map_init_attr *mia,
 	struct pool_domain      *doms;
 	int                     rc;
 
-	D_ALLOC_PTR(jmap);
+	D_ALLOC_PTR(jmap);  // 申请空间
 	if (jmap == NULL)
 		return -DER_NOMEM;
 
@@ -982,7 +996,7 @@ jump_map_create(struct pool_map *poolmap, struct pl_map_init_attr *mia,
 		goto ERR;
 	}
 
-	jmap->jmp_redundant_dom = mia->ia_jump_map.domain;
+	jmap->jmp_redundant_dom = mia->ia_jump_map.domain;  // 默认: PO_COMP_TP_RANK
 	rc = pool_map_find_domain(poolmap, mia->ia_jump_map.domain,
 				  PO_COMP_ID_ALL, &doms);
 	if (rc <= 0) {
@@ -1059,7 +1073,7 @@ jump_map_obj_place(struct pl_map *map, struct daos_obj_md *md,
 	D_DEBUG(DB_PL, "Determining location for object: "DF_OID", ver: %d\n",
 		DP_OID(oid), md->omd_ver);
 
-	rc = jm_obj_placement_get(jmap, md, shard_md, &jmop);
+	rc = jm_obj_placement_get(jmap, md, shard_md, &jmop);  // 获取副本数和group数
 	if (rc) {
 		D_ERROR("jm_obj_placement_get failed, rc "DF_RC"\n", DP_RC(rc));
 		return rc;
@@ -1068,7 +1082,7 @@ jump_map_obj_place(struct pl_map *map, struct daos_obj_md *md,
 	D_INIT_LIST_HEAD(&extend_list);
 	allow_status = PO_COMP_ST_UPIN | PO_COMP_ST_DRAIN;
 	rc = obj_layout_alloc_and_get(jmap, &jmop, md, allow_status, &layout,
-				      NULL, &is_extending);
+				      NULL, &is_extending);  // 及计算对象的分布
 	if (rc != 0) {
 		D_ERROR("get_layout_alloc failed, rc "DF_RC"\n", DP_RC(rc));
 		D_GOTO(out, rc);
@@ -1078,7 +1092,7 @@ jump_map_obj_place(struct pl_map *map, struct daos_obj_md *md,
 
 	rc = pool_map_find_domain(jmap->jmp_map.pl_poolmap,
 				  PO_COMP_TP_ROOT, PO_COMP_ID_ALL,
-				  &root);
+				  &root);  // 找到根节点
 	D_ASSERT(rc == 1);
 	rc = 0;
 	if (is_pool_adding(root))

@@ -186,14 +186,17 @@ d_hash_murmur64(const unsigned char *key, unsigned int key_len,
 }
 
 /**
- * Jump Consistent Hash Algorithm that provides a bucket location
+ * Jump Consistent(一致性) Hash Algorithm that provides a bucket location
  * for the given key. This algorithm hashes a minimal (1/n) number
  * of keys to a new bucket when extending the number of buckets.
  *
  * \param[in]   key             A unique key representing the object that
  *                              will be placed in the bucket.
+ *								全局唯一的key
+ *
  * \param[in]   num_buckets     The total number of buckets the hashing
  *                              algorithm can choose from.
+ *								key可选择的buckts的数量
  *
  * \return                      Returns an index ranging from 0 to
  *                              num_buckets representing the bucket
@@ -207,10 +210,10 @@ d_hash_jump(uint64_t key, uint32_t num_buckets)
 
 	while (y < num_buckets) {
 		z = y;
-		key = key * 2862933555777941757ULL + 1;
+		key = key * 2862933555777941757ULL + 1;	// 此处计算出来的key>>33后一定小于1LL<<31；
 		y = (z + 1) * ((double)(1LL << 31) /
-			       ((double)((key >> 33) + 1)));
-	}
+			       ((double)((key >> 33) + 1)));   // 1LL<<31 / key>>33 的值一定比1大  
+	}  // 所以总体上是一个跳跃选择的过程, 根据key的值决定跳跃的幅度
 	return z;
 }
 

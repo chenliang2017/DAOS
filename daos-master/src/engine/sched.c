@@ -58,12 +58,12 @@ struct sched_request {
 	unsigned int		 sr_abort:1;
 };
 
-bool		sched_prio_disabled;
+bool			sched_prio_disabled;
 unsigned int	sched_stats_intvl;
 unsigned int	sched_relax_intvl = SCHED_RELAX_INTVL_DEFAULT;
-unsigned int	sched_relax_mode;
+unsigned int	sched_relax_mode;	// SCHED_RELAX_MODE_NET
 unsigned int	sched_unit_runtime_max = 32; /* ms */
-bool		sched_watchdog_all;
+bool			sched_watchdog_all;		// 全局变量默认为false
 
 enum {
 	/* All requests for various pools are processed in FIFO */
@@ -1133,7 +1133,7 @@ wakeup_all(struct dss_xstream *dx)
 
         // 定时已经到的任务再次执行
 		if (!should_enqueue_req(dx, &req->sr_attr)) {
-			req_wakeup_internal(dx, req);
+			req_wakeup_internal(dx, req);	// 切换到睡眠的协程上下文，继续执行睡眠后的灯座; 切到对应的协程执行任务
 		} else {
 			d_list_del_init(&req->sr_link);
 			req->sr_wakeup_time = 0;
@@ -1239,18 +1239,18 @@ sched_cur_seq(void)
  * according to network/NVMe poll age;
  */
 struct sched_cycle {
-	uint32_t	sc_ults_cnt[DSS_POOL_CNT];
-	uint32_t	sc_ults_tot;
-	uint32_t	sc_age_net;
-	uint32_t	sc_age_nvme;
-	unsigned int	sc_new_cycle:1,
-			sc_cycle_started:1;
+	uint32_t	sc_ults_cnt[DSS_POOL_CNT];	// 记录各个池中剩余的任务数量
+	uint32_t	sc_ults_tot;	// generic中未调度的任务数量
+	uint32_t	sc_age_net;		// net两次调度中间，间隔的调度次数; 用来度量多久未得到调度; 每执行一次nvme/generic次数加1
+	uint32_t	sc_age_nvme;	// nvme两次调度中间，间隔的调度次数; 用来度量多久未得到调度; 每执行一次net/generic次数加1
+	unsigned int	sc_new_cycle:1,			// 是否开启新的一轮循环
+					sc_cycle_started:1;		// 新的一轮循环是否已经开启
 };
 
 struct sched_data {
 	struct sched_cycle	 sd_cycle;
 	struct dss_xstream	*sd_dx;
-	uint32_t		 sd_event_freq;
+	uint32_t		 	 sd_event_freq;	// 512, 连续执行512次后判断一下调度器状态
 };
 
 /* #define SCHED_DEBUG */
@@ -1295,24 +1295,24 @@ sched_init(ABT_sched sched, ABT_sched_config config)
 }
 
 static bool
-need_net_poll(struct sched_cycle *cycle)
+need_net_poll(struct sched_cycle *cycle)  // 正常情况下，每32次调度才会执行一次net-pool中的任务
 {
 	/* Need net poll to start new cycle */
-	if (!cycle->sc_cycle_started) {
+	if (!cycle->sc_cycle_started) {	
 		D_ASSERT(cycle->sc_ults_tot == 0);
-		return true;
+		return true;	// 新一轮循环尚未开始
 	}
 
 	/* Need a nvme poll to end current cycle */
 	if (cycle->sc_ults_tot == 0)
-		return false;
+		return false;	// generic-pool中不存在未调度的任务
 
 	/*
 	 * Need extra net poll when too many ULTs are processed in
 	 * current cycle.
 	 */
-	if (cycle->sc_age_net > SCHED_AGE_NET_MAX)
-		return true;
+	if (cycle->sc_age_net > SCHED_AGE_NET_MAX/*32*/)	
+		return true;	// net池中的ult最大执行间隔32次
 
 	return false;
 }
@@ -1320,7 +1320,7 @@ need_net_poll(struct sched_cycle *cycle)
 static ABT_unit
 sched_pop_net_poll(struct sched_data *data, ABT_pool pool)
 {
-	struct dss_xstream	*dx = data->sd_dx;
+	struct dss_xstream	*dx    = data->sd_dx;
 	struct sched_cycle	*cycle = &data->sd_cycle;
 	ABT_unit		 unit;
 	int			 ret;
@@ -1328,9 +1328,9 @@ sched_pop_net_poll(struct sched_data *data, ABT_pool pool)
 	if (!need_net_poll(cycle))
 		return ABT_UNIT_NULL;
 
-	cycle->sc_age_net = 0;
-	cycle->sc_age_nvme++;
-	if (cycle->sc_ults_tot == 0) {
+	cycle->sc_age_net = 0;  // 得到调度, 间隔次数清零
+	cycle->sc_age_nvme++;	// 次数加1, 表示nvme又一次未得到调度
+	if (cycle->sc_ults_tot == 0) {		// generic池中没有任务了, 开启新一轮的循环
 		D_ASSERT(!cycle->sc_cycle_started);
 		cycle->sc_new_cycle = 1;
 	}
@@ -1340,7 +1340,7 @@ sched_pop_net_poll(struct sched_data *data, ABT_pool pool)
 	 * not, there is always a server handler ULT in DSS_POOL_NET_POLL.
 	 * (see dss_srv_handler()).
 	 */
-	ret = ABT_pool_pop(pool, &unit);
+	ret = ABT_pool_pop(pool, &unit);  // 弹出一个任务
 	if (ret != ABT_SUCCESS) {
 		D_ERROR("XS(%d) failed to pop network poll ULT: %d\n",
 			dx->dx_xs_id, ret);
@@ -1370,8 +1370,8 @@ need_nvme_poll(struct dss_xstream *dx, struct sched_cycle *cycle)
 	 * Need extra NVMe poll when too many ULTs are processed in
 	 * current cycle.
 	 */
-	if (cycle->sc_age_nvme > SCHED_AGE_NVME_MAX)
-		return true;
+	if (cycle->sc_age_nvme > SCHED_AGE_NVME_MAX/*64*/)
+		return true;	// nvme池最大执行间隔64次
 
 	/* TLS is destroyed on dss_srv_handler ULT exiting */
 	if (info->si_stop)
@@ -1397,7 +1397,7 @@ sched_pop_nvme_poll(struct sched_data *data, ABT_pool pool)
 	cycle->sc_age_nvme = 0;
 	cycle->sc_age_net++;
 	if (cycle->sc_ults_tot == 0)
-		cycle->sc_cycle_started = 0;
+		cycle->sc_cycle_started = 0;	// generic中没有未调度的任务, 开始新的一轮查询
 
 	/* Only main xstream (VOS xstream) has NVMe poll ULT */
 	if (!dx->dx_main_xs)
@@ -1425,7 +1425,7 @@ sched_pop_one(struct sched_data *data, ABT_pool pool, int pool_idx)
 	if (cycle->sc_ults_cnt[pool_idx] == 0)
 		return ABT_UNIT_NULL;
 
-	ret = ABT_pool_pop(pool, &unit);
+	ret = ABT_pool_pop(pool, &unit);  // 弹出一个任务
 	if (ret != ABT_SUCCESS) {
 		D_ERROR("XS(%d) failed to pop ULT for ABT pool(%d): %d\n",
 			dx->dx_xs_id, pool_idx, ret);
@@ -1445,10 +1445,10 @@ sched_pop_one(struct sched_data *data, ABT_pool pool, int pool_idx)
 		D_DEBUG(DB_TRACE, "XS(%d) popped NULL unit for ABT pool(%d)\n",
 			dx->dx_xs_id, pool_idx);
 
-	cycle->sc_age_net++;
-	cycle->sc_age_nvme++;
-	cycle->sc_ults_cnt[pool_idx] -= 1;
-	cycle->sc_ults_tot -= 1;
+	cycle->sc_age_net++;	// net未执行次数加1
+	cycle->sc_age_nvme++;	// nvme未执行次数加1
+	cycle->sc_ults_cnt[pool_idx] -= 1;	// 任务少一个
+	cycle->sc_ults_tot -= 1;	// 任务少一个
 
 	return unit;
 }
@@ -1574,22 +1574,22 @@ sched_start_cycle(struct sched_data *data, ABT_pool *pools)
 	cycle->sc_new_cycle = 0;
 	cycle->sc_cycle_started = 1;
 
-	wakeup_all(dx);
+	wakeup_all(dx);		// 唤醒睡眠等待的协程任务
 	process_all(dx);
 
 	/* Get number of ULTS in generic ABT pool */
 	D_ASSERT(cycle->sc_ults_cnt[DSS_POOL_GENERIC] == 0);
-	ret = ABT_pool_get_size(pools[DSS_POOL_GENERIC], &cnt);
+	ret = ABT_pool_get_size(pools[DSS_POOL_GENERIC], &cnt);  // 获取池中任务的数量
 	if (ret != ABT_SUCCESS) {
 		D_ERROR("XS(%d) get ABT pool(%d) size error: %d\n",
 			dx->dx_xs_id, DSS_POOL_GENERIC, ret);
 		cnt = 0;
 	}
-	cycle->sc_ults_cnt[DSS_POOL_GENERIC] = cnt;
+	cycle->sc_ults_cnt[DSS_POOL_GENERIC] = cnt;		// 记录generic池中任务的数量
 	cycle->sc_ults_tot += cycle->sc_ults_cnt[DSS_POOL_GENERIC];
 
 	if (sched_relax_mode != SCHED_RELAX_MODE_DISABLED)
-		sched_try_relax(dx, pools, cycle->sc_ults_tot);
+		sched_try_relax(dx, pools, cycle->sc_ults_tot);  // 当前没有任务执行时, 睡眠1ms, 让出cpu
 
 	if (sched_stats_intvl != 0 &&
 	    (info->si_stats.ss_print_ts + sched_stats_intvl) <
@@ -1607,7 +1607,7 @@ watchdog_enabled(struct dss_xstream *dx)
 	if (sched_unit_runtime_max == 0)
 		return false;
 
-	return dx->dx_xs_id == 0 || (sched_watchdog_all && dx->dx_main_xs);
+	return dx->dx_xs_id/*sys stream*/ == 0 || (sched_watchdog_all/*false*/ && dx->dx_main_xs/*vos stream*/);
 }
 
 int
@@ -1644,12 +1644,12 @@ sched_watchdog_prep(struct dss_xstream *dx, ABT_unit unit)
 	if (!watchdog_enabled(dx))
 		return;
 
-	info->si_ult_start = daos_getmtime_coarse();
+	info->si_ult_start = daos_getmtime_coarse();  //开始执行时间
 	rc = ABT_unit_get_thread(unit, &thread);
 	D_ASSERT(rc == ABT_SUCCESS);
 	rc = ABT_thread_get_thread_func(thread, &thread_func);
 	D_ASSERT(rc == ABT_SUCCESS);
-	info->si_ult_func = thread_func;
+	info->si_ult_func = thread_func;			  //执行函数
 }
 
 static void
@@ -1698,7 +1698,7 @@ sched_watchdog_post(struct dss_xstream *dx)
 }
 
 static void
-sched_run(ABT_sched sched)
+sched_run(ABT_sched sched)//调度器的执行函数
 {
 	struct sched_data	*data;
 	struct sched_cycle	*cycle;
@@ -1713,34 +1713,36 @@ sched_run(ABT_sched sched)
 	cycle = &data->sd_cycle;
 	dx = data->sd_dx;
 
-	ret = ABT_sched_get_pools(sched, DSS_POOL_CNT, 0, pools);
+	ret = ABT_sched_get_pools(sched, DSS_POOL_CNT, 0, pools);//获取三个池
 	if (ret != ABT_SUCCESS) {
 		D_ERROR("XS(%d) get ABT pools error: %d\n",
 			dx->dx_xs_id, ret);
 		return;
 	}
 
+	// 调度器循环执行
 	while (1) {
 		/* Try to pick network poll ULT */
+		/* 正常情况下, 每32次调度才会执行一次net-pool中的任务 */
 		pool = pools[DSS_POOL_NET_POLL];
-		unit = sched_pop_net_poll(data, pool);
+		unit = sched_pop_net_poll(data, pool);  // 弹出一个NET_POOL池中的协程任务(dss_srv_handler)
 		if (unit != ABT_UNIT_NULL)
-			goto execute;
+			goto execute;  // 执行任务: 1、处理远端发过来的网络事件; 2、处理rpc超时回调; 3、处理swim逻辑
 
 		/* Try to pick NVMe poll ULT */
 		pool = pools[DSS_POOL_NVME_POLL];
-		unit = sched_pop_nvme_poll(data, pool);
+		unit = sched_pop_nvme_poll(data, pool);	// 弹出一个NVME_POOL中的协程任务(dss_nvme_poll_ult)
 		if (unit != ABT_UNIT_NULL)
-			goto execute;
+			goto execute;	// 执行任务：BIO相关
 
 		if (cycle->sc_ults_tot == 0)
 			goto start_cycle;
 
 		/* Try to pick a ULT from generic ABT pool */
 		pool = pools[DSS_POOL_GENERIC];
-		unit = sched_pop_one(data, pool, DSS_POOL_GENERIC);
+		unit = sched_pop_one(data, pool, DSS_POOL_GENERIC);	// 弹出一个GENERIC_POOL池中的协程任务
 		if (unit != ABT_UNIT_NULL)
-			goto execute;
+			goto execute;	// 执行任务：各种业务逻辑
 
 		/*
 		 * Nothing to be executed? Could be idle helper XS or poll ULT
@@ -1751,15 +1753,17 @@ execute:
 		D_ASSERT(pool != ABT_POOL_NULL);
 		sched_watchdog_prep(dx, unit);
 
-		ABT_xstream_run_unit(unit, pool);
+		ABT_xstream_run_unit(unit, pool);  // 执行协程任务
 
-		sched_watchdog_post(dx);
+		sched_watchdog_post(dx);	// 统计相关
 start_cycle:
+		// 新的循环
 		if (cycle->sc_new_cycle) {
 			sched_start_cycle(data, pools);
 			sched_dump_data(data);
 		}
 check_event:
+		// 连续执行超过512次, 检查一下调度器是否已经停止
 		if (++work_count >= data->sd_event_freq) {
 			ABT_bool stop;
 
@@ -1800,7 +1804,7 @@ sched_free_pools(struct dss_xstream *dx)
 }
 
 static int
-sched_create_pools(struct dss_xstream *dx)
+sched_create_pools(struct dss_xstream *dx)//创建三个先入先出池
 {
 	int	i, rc;
 
@@ -1856,7 +1860,7 @@ dss_sched_init(struct dss_xstream *dx)
 		return rc;
 
 	/* Create argobots pools */
-	rc = sched_create_pools(dx);
+	rc = sched_create_pools(dx);  // 创建3个先入先出池
 	if (rc != ABT_SUCCESS)
 		goto err_sched_info;
 
@@ -1867,7 +1871,7 @@ dss_sched_init(struct dss_xstream *dx)
 		goto err_pools;
 
 	rc = ABT_sched_create(&sched_def, DSS_POOL_CNT, dx->dx_pools, config,
-			      &dx->dx_sched);
+			      &dx->dx_sched);  // 创建一个调度器绑定3个池
 	ABT_sched_config_free(&config);
 
 	if (rc == ABT_SUCCESS)

@@ -539,7 +539,7 @@ plt_spare_tgts_get(uuid_t pl_uuid, daos_obj_id_t oid, uint32_t *failed_tgts,
 
 void
 gen_pool_and_placement_map(int num_domains, int nodes_per_domain,
-			   int vos_per_target, pl_map_type_t pl_type,
+			   int vos_per_target, pl_map_type_t pl_type/*PL_TYPE_JUMP_MAP*/,
 			   struct pool_map **po_map_out,
 			   struct pl_map **pl_map_out)
 {

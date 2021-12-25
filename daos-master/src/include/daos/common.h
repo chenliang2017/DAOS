@@ -184,12 +184,12 @@ daos_u32_hash(uint64_t key, unsigned int bits)
 #define LOWEST_BIT_SET(x)       ((x) & ~((x) - 1))
 
 static inline uint8_t
-isset_range(uint8_t *bitmap, uint32_t start, uint32_t end)
+isset_range(uint8_t *bitmap, uint32_t start, uint32_t end) // 位图上start~end之间全部置1时返回1, 否则返回0
 {
 	uint32_t index;
 
 	for (index = start; index <= end; ++index)
-		if (isclr(bitmap, index))
+		if (isclr(bitmap, index))  // 判断位图上的该位是否为0
 			return 0;
 
 	return 1;

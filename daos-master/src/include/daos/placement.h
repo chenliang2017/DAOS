@@ -32,7 +32,7 @@ typedef enum {
 } pl_map_type_t;
 
 struct pl_map_init_attr {
-	pl_map_type_t		ia_type;	// 分布算法, 默认使用jump hash
+	pl_map_type_t		ia_type;	// 分布算法, 默认使用jump hash: PL_TYPE_JUMP_MAP
 	union {
 		struct pl_ring_init_attr {
 			pool_comp_type_t	domain;
@@ -59,9 +59,9 @@ struct pl_target_grp {
 };
 
 struct pl_obj_shard {
-	uint32_t	po_shard;	/* shard index */ 	// 分片序号, 在obj内是唯一的；
-	uint32_t	po_target;	/* target id */		// 这个分片关联的target的id号, target id应该是全局唯一的
-	uint32_t	po_fseq;	/* The latest failure sequence */
+	uint32_t	po_shard;	/* shard index */ 	// 分片序号, 从0开始，在obj内是唯一的；
+	uint32_t	po_target;	/* target id */		// 这个分片关联的target的id号, target id应该是全局唯一的，所有target的编号是从0开始递增的
+	uint32_t	po_fseq;	/* The latest failure sequence */	// 这个target上次被标记down时的poolmap的版本号
 	uint32_t	po_rebuilding:1; /* rebuilding status */
 };
 

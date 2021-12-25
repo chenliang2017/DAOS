@@ -132,7 +132,7 @@ op_get_grp_size(unsigned int domain_nr, unsigned int *grp_size,
 
 	oc_attr = daos_oclass_attr_find(oid, NULL);
 
-	*grp_size = daos_oclass_grp_size(oc_attr);
+	*grp_size = daos_oclass_grp_size(oc_attr);  // 副本数
 	D_ASSERT(*grp_size != 0);
 
 	if (*grp_size == DAOS_OBJ_REPL_MAX)

@@ -150,6 +150,7 @@ enumerate_key(daos_handle_t oh, int *total_nr, daos_key_t *dkey, int key_type)
 		if (nr == 0)
 			continue;
 		key_nr += nr;
+		printf("sg_nr：%d, sg_nr_out:%d\n", sgl.sg_nr, sgl.sg_nr_out);
 	}
 
 	*total_nr = key_nr;
@@ -367,8 +368,9 @@ example_daos_key_sv()
 		d_iov_t		sg_iov;
 		daos_iod_t	iod;
 
-		sprintf(dkey_str, "dkey_%d", i);
+		sprintf(dkey_str, "dkey_test_%d", i);
 		d_iov_set(&dkey, dkey_str, strlen(dkey_str));
+		printf("dkey: %s\n", dkey_str);
 
 		d_iov_set(&sg_iov, buf, BUFLEN);
 		sgl.sg_nr		= 1;
@@ -382,8 +384,9 @@ example_daos_key_sv()
 		 * each rank will create a separate akey under the same dkey
 		 * with it's rank attached to akey name.
 		 */
-		sprintf(akey_str, "akey_%d", rank);
+		sprintf(akey_str, "akey_test_%d", rank);
 		d_iov_set(&iod.iod_name, akey_str, strlen(akey_str));
+		printf("akey: %s\n", akey_str);
 
 		iod.iod_nr	= 1; /** has to be 1 for single value */
 		iod.iod_size	= BUFLEN; /** size of the single value */
@@ -401,7 +404,7 @@ example_daos_key_sv()
 		daos_iod_t	iod;
 
 		/** init dkey */
-		sprintf(dkey_str, "dkey_%d", i);
+		sprintf(dkey_str, "dkey_test_%d", i);
 		d_iov_set(&dkey, dkey_str, strlen(dkey_str));
 
 		/** init scatter/gather */
@@ -411,7 +414,7 @@ example_daos_key_sv()
 		sgl.sg_iovs		= &sg_iov;
 
 		/** init I/O descriptor */
-		sprintf(akey_str, "akey_%d", rank);
+		sprintf(akey_str, "akey_test_%d", rank);
 		d_iov_set(&iod.iod_name, akey_str, strlen(akey_str));
 		iod.iod_nr	= 1;
 		/*
@@ -728,16 +731,16 @@ main(int argc, char **argv)
 	handle_share(&coh, HANDLE_CO);
 
 	/** Example of DAOS key_Array object */
-	example_daos_key_array();
+	//example_daos_key_array();
 
 	/** Example of DAOS key_SV object */
 	example_daos_key_sv();
 
 	/** Example of DAOS Array object */
-	example_daos_array();
+	//example_daos_array();
 
 	/** Example of DAOS KV object */
-	example_daos_kv();
+	//example_daos_kv();
 
 	MPI_Barrier(MPI_COMM_WORLD);
 

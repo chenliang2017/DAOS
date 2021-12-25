@@ -15,7 +15,7 @@
 
 /** counters for component (sub)tree */
 struct pool_comp_cntr {
-	/** # of domains in the top level */
+	/** # of domains in the top level, 顶层组件的数量 */
 	unsigned int		 cc_top_doms;
 	/** # of all domains */
 	unsigned int		 cc_domains;
@@ -61,23 +61,28 @@ struct pool_map {
 	uint32_t		 po_version;		// 当前版本
 	/** refcount on the pool map */
 	int			 po_ref;
-	/** # domain layers */
+	/** # domain layers, 层数，从root层开始不包括target层
+	 * root->node->rank->target，层次为3
+	 */
 	unsigned int		 po_domain_layers;
 	/**
 	 * Sorters for the binary search of different domain types.
 	 * These sorters are in ascending order for binary search of sorters.
+	 * 按组件的内部ID升序排列
+	 * 数组大小与po_domain_layers一致
 	 */
 	struct pool_comp_sorter	*po_domain_sorters;
-	/** sorter for binary search of target */
+	/** sorter for binary search of target, 按target的ID升序排列 */
 	struct pool_comp_sorter	 po_target_sorter;
 	/**
 	 * Tree root of all components.
 	 * NB: All components must be stored in contiguous buffer.
 	 */
-	struct pool_domain	*po_tree;
+	struct pool_domain	*po_tree;	// 组件树
 	/**
 	 * number of currently failed pool components of each type
 	 * of component found in the pool
+	 * 数组大小与po_domain_layers一致
 	 */
 	struct pool_fail_comp	*po_comp_fail_cnts;
 
@@ -339,7 +344,7 @@ comp_sorter_sort(struct pool_comp_sorter *sorter)
 
 /** create a new pool buffer which can store \a nr components */
 struct pool_buf *
-pool_buf_alloc(unsigned int nr)
+pool_buf_alloc(unsigned int nr)  // 申请空间, 存储nr个组件
 {
 	struct pool_buf *buf;
 
@@ -387,10 +392,9 @@ int
 pool_buf_attach(struct pool_buf *buf, struct pool_component *comps,
 		unsigned int comp_nr)
 {
-	unsigned int	nr = buf->pb_domain_nr + buf->pb_node_nr +
-			     buf->pb_target_nr;
+	unsigned int nr = buf->pb_domain_nr + buf->pb_node_nr + buf->pb_target_nr;
 
-	if (buf->pb_nr < nr + comp_nr)
+	if (buf->pb_nr < nr + comp_nr) // 申请的空间小于已用空间和需求空间的总和
 		return -DER_NOSPACE;
 
 	D_DEBUG(DB_TRACE, "Attaching %d components\n", comp_nr);
@@ -398,8 +402,8 @@ pool_buf_attach(struct pool_buf *buf, struct pool_component *comps,
 		struct pool_component *prev;
 
 		prev = nr == 0 ? NULL : &buf->pb_comps[nr - 1];
-		if (prev != NULL && prev->co_type < comps[0].co_type) {
-			D_ERROR("bad type hierarchy, prev type=%d, "
+		if (prev != NULL && prev->co_type < comps[0].co_type) {  // 尾部扩展的组件类型必须比前面的类型低
+			D_ERROR("bad type hierarchy, prev type=%d, "	// 要求类型递减
 				"current=%d\n", prev->co_type,
 				comps[0].co_type);
 			return -DER_INVAL;
@@ -442,7 +446,7 @@ pool_buf_unpack(struct pool_buf *buf)
  * Parse pool buffer and construct domain+target array (tree) based on
  * the information in pool buffer.
  *
- * \param buf		[IN]	pool buffer to be parsed
+ * \param buf		[IN]	pool buffer to be parsed, 创池需要的所有组件信息
  * \param tree_pp	[OUT]	the returned domain+target tree.
  */
 static int
@@ -473,17 +477,18 @@ pool_buf_parse(struct pool_buf *buf, struct pool_domain **tree_pp)
 	D_DEBUG(DB_TRACE, "domain %d node %d target %d\n", buf->pb_domain_nr,
 		buf->pb_node_nr, buf->pb_target_nr);
 
-	D_ALLOC(tree, size);
+	D_ALLOC(tree, size);	// 连续内存，树的层级存储方式
 	if (tree == NULL)
 		return -DER_NOMEM;
 
+	// 存储叶子节点(target)
 	targets	= (struct pool_target *)&tree[buf->pb_domain_nr +
-					      buf->pb_node_nr + 1];
+					      buf->pb_node_nr + 1];		// 叶子节点的起始位置
 	for (i = 0; i < buf->pb_target_nr; i++)
 		targets[i].ta_comp = buf->pb_comps[buf->pb_domain_nr +
 						buf->pb_node_nr + i];
 
-	/* Initialize the root */
+	/* Initialize the root, 根节点 */
 	parent = &tree[0]; /* root */
 	parent->do_comp.co_type   = PO_COMP_TP_ROOT;
 	parent->do_comp.co_status = PO_COMP_ST_UPIN;
@@ -492,18 +497,18 @@ pool_buf_parse(struct pool_buf *buf, struct pool_domain **tree_pp)
 		parent->do_target_nr = buf->pb_node_nr;
 		parent->do_child_nr = buf->pb_node_nr;
 	} else {
-		parent->do_child_nr = buf->pb_domain_nr;
+		parent->do_child_nr = buf->pb_domain_nr;  // 直属子组件的数量
 	}
 	parent->do_children = &tree[1];
 
 	parent++;
-	type = buf->pb_comps[0].co_type;
+	type = buf->pb_comps[0].co_type;  // buf第一个组件的类型
 
 	for (i = 1;; i++) {
 		struct pool_component *comp = &tree[i].do_comp;
 		int		       nr = 0;
 
-		*comp = buf->pb_comps[i - 1];
+		*comp = buf->pb_comps[i - 1];  // 赋值, 从buf中向tree中赋值
 		if (comp->co_type >= PO_COMP_TP_ROOT) {
 			D_ERROR("Invalid type %d/%d\n", type, comp->co_type);
 			rc = -DER_INVAL;
@@ -514,21 +519,22 @@ pool_buf_parse(struct pool_buf *buf, struct pool_domain **tree_pp)
 			pool_comp_type2str(comp->co_type), comp->co_id,
 			i, comp->co_nr);
 
-		if (comp->co_type == type)
+		if (comp->co_type == type)  // 连续赋值, 直到类型发生变化
 			continue;
 
 		type = comp->co_type;
 
+		// 赋值父节点中指向孩子节点的指针
 		for (; parent < &tree[i]; parent++) {
-			if (type != PO_COMP_TP_TARGET) {
+			if (type != PO_COMP_TP_TARGET) {  // 中间层, 未到叶子节点
 				D_DEBUG(DB_TRACE, "Setup children for %s[%d]"
 					" child nr %d\n",
 					pool_domain_name(parent),
 					parent->do_comp.co_id,
 					parent->do_child_nr);
 
-				parent->do_children = &tree[i + nr];
-				nr += parent->do_child_nr;
+				parent->do_children = &tree[i + nr];  // 指向第一个孩子节点
+				nr += parent->do_child_nr;	// 累加孩子节点的数量
 			} else {
 				/* parent is the last level domain */
 				D_DEBUG(DB_TRACE, "Setup targets for %s[%d]\n",
@@ -976,7 +982,7 @@ pool_map_initialise(struct pool_map *map, struct pool_domain *tree)
 		for (j = 0; j < sorter->cs_nr; j++)
 			sorter->cs_comps[j] = &tree[j].do_comp;
 
-		rc = comp_sorter_sort(sorter);
+		rc = comp_sorter_sort(sorter);  // 各组件按组件内部编号升序排列
 		if (rc != 0)
 			goto out_domain_sorters;
 
@@ -995,7 +1001,7 @@ pool_map_initialise(struct pool_map *map, struct pool_domain *tree)
 		map->po_target_sorter.cs_comps[i] = &ta->ta_comp;
 	}
 
-	rc = comp_sorter_sort(&map->po_target_sorter);
+	rc = comp_sorter_sort(&map->po_target_sorter);  // 各组件按组件内部编号升序排列
 	if (rc != 0)
 		goto out_target_sorter;
 
@@ -1607,8 +1613,8 @@ error_tree:
 /**
  * Create a pool map from components stored in \a buf.
  *
- * \param buf		[IN]	The buffer to input pool components.
- * \param version	[IN]	Version for the new created pool map.
+ * \param buf		[IN]	The buffer to input pool components, 创池需要的所有组件信息
+ * \param version	[IN]	Version for the new created pool map, 版本信息
  * \param mapp		[OUT]	The returned pool map.
  * 创建map
  */
@@ -1619,13 +1625,13 @@ pool_map_create(struct pool_buf *buf, uint32_t version, struct pool_map **mapp)
 	struct pool_map	   *map;
 	int		    rc;
 
-	rc = pool_buf_parse(buf, &tree);
+	rc = pool_buf_parse(buf, &tree);// 通过buf构建tree
 	if (rc != 0) {
 		D_ERROR("pool_buf_parse failed: "DF_RC"\n", DP_RC(rc));
 		return rc;
 	}
 
-	if (!pool_tree_sane(tree, version)) {
+	if (!pool_tree_sane(tree, version)) {  // 一致性检测
 		pool_tree_free(tree);
 		return -DER_INVAL;
 	}

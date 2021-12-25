@@ -66,26 +66,27 @@ enum pool_component_flags {
 
 #define co_in_ver	co_out_ver
 /** parent class of all all pool components: target, domain */
+// 用来存储每一个pool_map中每一个组件的信息
 struct pool_component {
 	/** pool_comp_type_t */
-	uint8_t		co_type;
+	uint8_t		co_type;		// 组件的类型: node/rank/target/...
 	/** pool_comp_state_t */
-	uint8_t		co_status;
+	uint8_t		co_status;		// 组件的状态：PO_COMP_ST_UPIN/...
 	/** target index inside the node */
-	uint8_t		co_index;
+	uint8_t		co_index;		// target在rank内的索引标号, 一个rank内含多个tatget时, co_index总是从0开始
 	/** padding for 64-bit alignment */
 	uint8_t		co_padding;
 	/** Immutable component ID. */
-	uint32_t	co_id;
+	uint32_t	co_id;			// 组件的ID, 同一类型的组件, co_id是从0递增的
 	/**
 	 * e.g. rank in the communication group, only used by PO_COMP_TARGET
 	 * for the time being.
 	 */
-	uint32_t	co_rank;
+	uint32_t	co_rank;		// target归属的rank编号; 其他组件时与co_id一致
 	/** version it's been added */
 	uint32_t	co_ver;
 	/** failure sequence */
-	uint32_t		co_fseq;
+	uint32_t		co_fseq;	// domain被标记down时的map版本号
 
 	/**
 	 * co_in_ver and co_out_ver are shared the same item here.
@@ -99,10 +100,11 @@ struct pool_component {
 	/** flags, see enum pool_component_flags */
 	uint32_t		co_flags;
 	/** number of children or storage partitions */
-	uint32_t	co_nr;
+	uint32_t	co_nr;		// 该组件拥有子组件的数量
 };
 
 /** a leaf of pool map */
+// 叶子节点(target)
 struct pool_target {
 	/** embedded component for myself */
 	struct pool_component	 ta_comp;
@@ -112,23 +114,29 @@ struct pool_target {
 /**
  * an intermediate component in pool map, a domain can either contains low
  * level domains or just leaf targets.
+ * 树形结构的中间件, 他的下级可以是中间件domain也可以是叶子节点target
+ * 每个节点都可以用该结构体表示
  */
 struct pool_domain {
 	/** embedded component for myself */
 	struct pool_component	 do_comp;
-	/** # all targets within this domain */
-	unsigned int		 do_target_nr;
+	/** # all targets within this domain
+	 * 拥有的target的总数量(以该domain为根节点的树中的所有target)
+	 */
+	unsigned int		 	 do_target_nr;
 	/**
 	 * child domains within current domain, it is NULL for the last
 	 * level domain.
+	 * 指向第一个孩子节点的位置指针, rank无孩子节点, rank以上的domain有孩子节点
 	 */
-	struct pool_domain	*do_children;
+	struct pool_domain		*do_children;
 	/**
 	 * all targets within this domain
 	 * for the last level domain, it points to the first direct targets
 	 * for the intermediate domain, it points to the first indirect targets
+	 * 指向第一个归属target位置的指针
 	 */
-	struct pool_target	*do_targets;
+	struct pool_target		*do_targets;
 };
 
 #define do_child_nr		do_comp.co_nr
@@ -191,8 +199,8 @@ struct pool_buf {
 	/** checksum of components */
 	uint32_t	pb_csum;
 	/** summary of domain_nr, node_nr, target_nr, buffer size */
-	uint32_t	pb_nr;
-	uint32_t	pb_domain_nr;	//
+	uint32_t	pb_nr;			// buf可存储的组件的总数, 申请空间时的组件个数
+	uint32_t	pb_domain_nr;	// 中间层的数量
 	uint32_t	pb_node_nr;		// rank的数量
 	uint32_t	pb_target_nr;   // target的数量
 	uint32_t	pb_padding;

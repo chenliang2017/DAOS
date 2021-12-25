@@ -35,8 +35,8 @@ struct sched_stats {
 
 struct sched_info {
 	uint64_t		 si_cur_ts;		/* Current timestamp (ms) */
-	uint64_t		 si_cur_seq;	/* Current schedule sequence */
-	uint64_t		 si_ult_start;	/* Start time of last executed unit */
+	uint64_t		 si_cur_seq;	/* Current schedule sequence, 每完成一次协程的调度，就加1 */
+	uint64_t		 si_ult_start;	/* Start time of last executed unit,上一个ult的开始执行时间 */
 	void			*si_ult_func;	/* Function addr of last executed unit */
 	struct sched_stats	 si_stats;	/* Sched stats */
 	d_list_t		 si_idle_list;	/* All unused requests */
@@ -55,13 +55,13 @@ struct dss_xstream {
 	char			dx_name[DSS_XS_NAME_LEN];
 	ABT_future		dx_shutdown;
 	ABT_future		dx_stopping;
-	hwloc_cpuset_t		dx_cpuset;
+	hwloc_cpuset_t	dx_cpuset;
 	ABT_xstream		dx_xstream;
-	ABT_pool		dx_pools[DSS_POOL_CNT];
-	ABT_sched		dx_sched;
+	ABT_pool		dx_pools[DSS_POOL_CNT];		// 三个先入先出的池，类型为：ABT_POOL_ACCESS_MPSC(多线程入单线程出)
+	ABT_sched		dx_sched;					// 
 	ABT_thread		dx_progress;
-	struct sched_info	dx_sched_info;
-	tse_sched_t		dx_sched_dsc;
+	struct sched_info	dx_sched_info;	// 调度信息
+	tse_sched_t			dx_sched_dsc;
 	struct dss_rpc_cntr	dx_rpc_cntrs[DSS_RC_MAX];
 	/* xstream id, [0, DSS_XS_NR_TOTAL - 1] */
 	int			dx_xs_id;
@@ -73,7 +73,7 @@ struct dss_xstream {
 	int			dx_ctx_id;
 	/* Cart progress timeout in micro-seconds */
 	unsigned int		dx_timeout;
-	bool			dx_main_xs;	/* true for main XS */
+	bool			dx_main_xs;	/* true for main XS(VOS xstream) */
 	bool			dx_comm;	/* true with cart context */
 	bool			dx_dsc_started;	/* DSC progress ULT started */
 };
