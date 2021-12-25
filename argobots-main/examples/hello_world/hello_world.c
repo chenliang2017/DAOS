@@ -90,11 +90,7 @@ int main(int argc, char **argv)
 
     /* Get default pools. */
     for (i = 0; i < num_xstreams; i++) {
-<<<<<<< Updated upstream
         ABT_xstream_get_main_pools(xstreams[1], 1, &pools[1]);  // 获取主调度器的池
-=======
-        ABT_xstream_get_main_pools(xstreams[1], 1, &pools[1]);  // 获取调度器的池
->>>>>>> Stashed changes
     }
 
     /* Create ULTs. */
